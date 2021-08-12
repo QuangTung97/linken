@@ -8,16 +8,16 @@ type PartitionStatus int
 
 const (
 	// PartitionStatusInit ...
-	PartitionStatusInit PartitionStatus = 1
+	PartitionStatusInit PartitionStatus = 0
 
 	// PartitionStatusStarting ...
 	PartitionStatusStarting PartitionStatus = 1
 
 	// PartitionStatusRunning ...
-	PartitionStatusRunning PartitionStatus = 1
+	PartitionStatusRunning PartitionStatus = 2
 
 	// PartitionStatusStopping ...
-	PartitionStatusStopping PartitionStatus = 1
+	PartitionStatusStopping PartitionStatus = 3
 )
 
 type partitionAssigns map[string][]PartitionID
