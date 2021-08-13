@@ -41,12 +41,10 @@ func newGroupState(count int) *groupState {
 	}
 }
 
-func (s *groupState) nodeJoin(name string) bool {
-	s.nodes[name] = nodeInfo{}
-
+func (s *groupState) reallocate() {
 	nodes := make([]string, 0, len(s.nodes))
-	for name := range s.nodes {
-		nodes = append(nodes, name)
+	for nodeName := range s.nodes {
+		nodes = append(nodes, nodeName)
 	}
 	sort.Strings(nodes)
 
@@ -83,12 +81,71 @@ func (s *groupState) nodeJoin(name string) bool {
 			}
 		}
 	}
+}
 
+func (s *groupState) nodeJoin(name string) bool {
+	defer s.reallocate()
+
+	_, existed := s.nodes[name]
+	if existed {
+		return false
+	}
+
+	s.nodes[name] = nodeInfo{}
 	return true
 }
 
-func (s *groupState) notifyRunning(id PartitionID, lastVersion groupVersion) bool {
+func (s *groupState) notifyRunning(id PartitionID, owner string, lastVersion groupVersion) bool {
+	prev := s.partitions[id]
+	if prev.owner != owner {
+		return false
+	}
+
+	if prev.status != PartitionStatusStarting {
+		return false
+	}
+
 	s.partitions[id].status = PartitionStatusRunning
 	s.partitions[id].modVersion = s.version + 1
+	return true
+}
+
+func (s *groupState) notifyStopped(id PartitionID, owner string, lastVersion groupVersion) bool {
+	prev := s.partitions[id]
+
+	if prev.owner != owner {
+		return false
+	}
+
+	if prev.status != PartitionStatusStopping {
+		return false
+	}
+
+	s.partitions[id] = partitionInfo{
+		status:     PartitionStatusStarting,
+		owner:      prev.nextOwner,
+		modVersion: s.version + 1,
+	}
+	return true
+}
+
+func (s *groupState) nodeLeave(name string) bool {
+	_, existed := s.nodes[name]
+	if !existed {
+		return false
+	}
+	delete(s.nodes, name)
+
+	defer s.reallocate()
+
+	for i, prev := range s.partitions {
+		if prev.status == PartitionStatusStopping && prev.nextOwner == name {
+			s.partitions[i] = partitionInfo{
+				status:     PartitionStatusInit,
+				modVersion: s.version + 1,
+			}
+		}
+	}
+
 	return true
 }
