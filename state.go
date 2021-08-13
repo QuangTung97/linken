@@ -40,6 +40,36 @@ func newGroupState(count int) *groupState {
 	}
 }
 
+func (s *groupState) reallocateSinglePartition(id PartitionID, expectedName string) {
+	prev := s.partitions[id]
+
+	if prev.status == PartitionStatusInit {
+		s.partitions[id] = partitionInfo{
+			status:     PartitionStatusStarting,
+			owner:      expectedName,
+			nextOwner:  "",
+			modVersion: s.version + 1,
+		}
+		return
+	}
+
+	if prev.owner == expectedName {
+		return
+	}
+
+	if prev.status == PartitionStatusStarting || prev.status == PartitionStatusRunning {
+		s.partitions[id] = partitionInfo{
+			status:     PartitionStatusStopping,
+			owner:      prev.owner,
+			nextOwner:  expectedName,
+			modVersion: s.version + 1,
+		}
+		return
+	}
+
+	s.partitions[id].nextOwner = expectedName
+}
+
 func (s *groupState) reallocate() {
 	if len(s.nodes) == 0 {
 		return
@@ -55,33 +85,26 @@ func (s *groupState) reallocate() {
 	for i, p := range s.partitions {
 		id := PartitionID(i)
 
-		currentName := p.owner
-		current[currentName] = append(current[currentName], id)
+		if p.status == PartitionStatusInit {
+			continue
+		}
+
+		if p.status == PartitionStatusStopping {
+			if p.nextOwner != "" {
+				currentName := p.nextOwner
+				current[currentName] = append(current[currentName], id)
+			}
+		} else {
+			currentName := p.owner
+			current[currentName] = append(current[currentName], id)
+		}
 	}
 
 	expected := reallocatePartitions(len(s.partitions), nodes, current)
 
 	for expectedName, expectedIDs := range expected {
 		for _, id := range expectedIDs {
-			prev := s.partitions[id]
-			if prev.status == PartitionStatusStarting && prev.owner != expectedName {
-				s.partitions[id] = partitionInfo{
-					status:     PartitionStatusStopping,
-					owner:      prev.owner,
-					nextOwner:  expectedName,
-					modVersion: s.version + 1,
-				}
-				continue
-			}
-
-			if prev.status == PartitionStatusInit {
-				s.partitions[id] = partitionInfo{
-					status:     PartitionStatusStarting,
-					owner:      expectedName,
-					nextOwner:  "",
-					modVersion: s.version + 1,
-				}
-			}
+			s.reallocateSinglePartition(id, expectedName)
 		}
 	}
 }
