@@ -41,6 +41,10 @@ func newGroupState(count int) *groupState {
 }
 
 func (s *groupState) reallocate() {
+	if len(s.nodes) == 0 {
+		return
+	}
+
 	nodes := make([]string, 0, len(s.nodes))
 	for nodeName := range s.nodes {
 		nodes = append(nodes, nodeName)
@@ -125,10 +129,18 @@ func (s *groupState) notifyStopped(id PartitionID, owner string, lastVersion gro
 		return false
 	}
 
-	s.partitions[id] = partitionInfo{
-		status:     PartitionStatusStarting,
-		owner:      prev.nextOwner,
-		modVersion: s.version + 1,
+	if prev.nextOwner != "" {
+		s.partitions[id] = partitionInfo{
+			status:     PartitionStatusStarting,
+			owner:      prev.nextOwner,
+			modVersion: s.version + 1,
+		}
+	} else {
+		s.partitions[id] = partitionInfo{
+			status:     PartitionStatusInit,
+			modVersion: s.version + 1,
+		}
+		s.reallocate()
 	}
 	return true
 }
@@ -153,12 +165,13 @@ func (s *groupState) nodeLeave(name string) bool {
 			} else if prev.nextOwner == name {
 				s.partitions[i].nextOwner = ""
 			}
-		} else if prev.status == PartitionStatusStarting || prev.status == PartitionStatusRunning {
-			if prev.owner == name {
-				s.partitions[i] = partitionInfo{
-					status:     PartitionStatusInit,
-					modVersion: s.version + 1,
-				}
+			continue
+		}
+
+		if prev.owner == name {
+			s.partitions[i] = partitionInfo{
+				status:     PartitionStatusInit,
+				modVersion: s.version + 1,
 			}
 		}
 	}

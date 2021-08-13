@@ -315,3 +315,42 @@ func TestGroupState_Node_Leave_Owner_When_Stopping(t *testing.T) {
 		{status: PartitionStatusStarting, owner: "node02", modVersion: 3},
 	}, s.partitions)
 }
+
+func TestGroupState_Notify_Stopped_When_Next_Owner_Empty(t *testing.T) {
+	s := newGroupState(3)
+	s.nodeJoin("node01")
+	s.version++
+
+	s.nodeJoin("node02")
+	s.version++
+
+	s.nodeLeave("node02")
+	s.version++
+
+	changed := s.notifyStopped(2, "node01", 2)
+	assert.Equal(t, true, changed)
+
+	assert.Equal(t, []partitionInfo{
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 4},
+	}, s.partitions)
+}
+
+func TestGroupState_Node_Leave_Become_Empty(t *testing.T) {
+	s := newGroupState(3)
+	s.nodeJoin("node01")
+	s.version++
+
+	changed := s.nodeLeave("node01")
+	assert.Equal(t, true, changed)
+	s.version++
+
+	assert.Equal(t, groupVersion(2), s.version)
+	assert.Equal(t, map[string]nodeInfo{}, s.nodes)
+	assert.Equal(t, []partitionInfo{
+		{status: PartitionStatusInit, modVersion: 2},
+		{status: PartitionStatusInit, modVersion: 2},
+		{status: PartitionStatusInit, modVersion: 2},
+	}, s.partitions)
+}
