@@ -9,8 +9,7 @@ type nodeStatus int
 
 const (
 	nodeStatusAlive  nodeStatus = 0
-	nodeStatusDead   nodeStatus = 1
-	nodeStatusZombie nodeStatus = 2
+	nodeStatusZombie nodeStatus = 1
 )
 
 type nodeInfo struct {
@@ -97,10 +96,13 @@ func (s *groupState) nodeJoin(name string) bool {
 
 func (s *groupState) notifyRunning(id PartitionID, owner string, lastVersion groupVersion) bool {
 	prev := s.partitions[id]
+
 	if prev.owner != owner {
 		return false
 	}
-
+	if lastVersion != prev.modVersion {
+		return false
+	}
 	if prev.status != PartitionStatusStarting {
 		return false
 	}
@@ -116,7 +118,9 @@ func (s *groupState) notifyStopped(id PartitionID, owner string, lastVersion gro
 	if prev.owner != owner {
 		return false
 	}
-
+	if prev.modVersion != lastVersion {
+		return false
+	}
 	if prev.status != PartitionStatusStopping {
 		return false
 	}
@@ -139,10 +143,22 @@ func (s *groupState) nodeLeave(name string) bool {
 	defer s.reallocate()
 
 	for i, prev := range s.partitions {
-		if prev.status == PartitionStatusStopping && prev.nextOwner == name {
-			s.partitions[i] = partitionInfo{
-				status:     PartitionStatusInit,
-				modVersion: s.version + 1,
+		if prev.status == PartitionStatusStopping {
+			if prev.owner == name {
+				s.partitions[i] = partitionInfo{
+					status:     PartitionStatusStarting,
+					owner:      prev.nextOwner,
+					modVersion: s.version + 1,
+				}
+			} else if prev.nextOwner == name {
+				s.partitions[i].nextOwner = ""
+			}
+		} else if prev.status == PartitionStatusStarting || prev.status == PartitionStatusRunning {
+			if prev.owner == name {
+				s.partitions[i] = partitionInfo{
+					status:     PartitionStatusInit,
+					modVersion: s.version + 1,
+				}
 			}
 		}
 	}
