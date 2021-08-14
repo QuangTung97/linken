@@ -1,4 +1,4 @@
-.PHONY: lint test
+.PHONY: lint test install-tools
 
 lint:
 	go fmt ./...
@@ -9,3 +9,6 @@ lint:
 
 test:
 	go test -v ./...
+
+install-tools:
+	go install github.com/matryer/moq

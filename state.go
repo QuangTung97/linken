@@ -13,16 +13,29 @@ const (
 )
 
 type nodeInfo struct {
-	status     nodeStatus
-	lastActive time.Time
+	status nodeStatus
 }
 
 type groupVersion uint64
 
+//go:generate moq -out state_mocks_test.go . groupTimer groupTimerFactory
+
+type groupTimerFactory interface {
+	newTimer(name string, d time.Duration) groupTimer
+}
+
+type groupTimer interface {
+	stop()
+}
+
 type groupState struct {
+	factory groupTimerFactory
+	options linkenOptions
+
 	version    groupVersion
 	nodes      map[string]nodeInfo
 	partitions []partitionInfo
+	timers     map[string]groupTimer
 }
 
 type partitionInfo struct {
@@ -32,12 +45,20 @@ type partitionInfo struct {
 	modVersion groupVersion // modify version
 }
 
-func newGroupState(count int) *groupState {
+func newGroupStateOptions(count int, factory groupTimerFactory, opts linkenOptions) *groupState {
 	return &groupState{
+		factory: factory,
+		options: opts,
+
 		version:    0,
 		nodes:      map[string]nodeInfo{},
 		partitions: make([]partitionInfo, count),
+		timers:     map[string]groupTimer{},
 	}
+}
+
+func newGroupState(count int) *groupState {
+	return newGroupStateOptions(count, nil, computeLinkenOptions())
 }
 
 func (s *groupState) reallocateSinglePartition(id PartitionID, expectedName string) {
@@ -112,9 +133,14 @@ func (s *groupState) reallocate() {
 func (s *groupState) nodeJoin(name string) bool {
 	defer s.reallocate()
 
-	_, existed := s.nodes[name]
-	if existed {
+	prev, existed := s.nodes[name]
+	if existed && prev.status == nodeStatusAlive {
 		return false
+	}
+
+	if prev.status == nodeStatusZombie {
+		s.timers[name].stop()
+		delete(s.timers, name)
 	}
 
 	s.nodes[name] = nodeInfo{}
@@ -200,4 +226,22 @@ func (s *groupState) nodeLeave(name string) bool {
 	}
 
 	return true
+}
+
+func (s *groupState) nodeDisconnect(name string) {
+	_, existed := s.nodes[name]
+	if !existed {
+		return
+	}
+
+	s.nodes[name] = nodeInfo{
+		status: nodeStatusZombie,
+	}
+	timer := s.factory.newTimer(name, s.options.nodeExpiredDuration)
+	s.timers[name] = timer
+}
+
+func (s *groupState) nodeExpired(name string) bool {
+	delete(s.timers, name)
+	return s.nodeLeave(name)
 }

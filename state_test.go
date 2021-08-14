@@ -3,6 +3,7 @@ package linken
 import (
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 func TestGroupState_Init(t *testing.T) {
@@ -492,5 +493,128 @@ func TestGroupState_Rebalance_When_Stopping_Next_Owner_Empty(t *testing.T) {
 		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node03", modVersion: 3},
 		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node03", modVersion: 3},
 		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node03", modVersion: 3},
+	}, s.partitions)
+}
+
+func TestGroupState_NodeDisconnect_And_Expired(t *testing.T) {
+	factory := &groupTimerFactoryMock{}
+
+	s := newGroupStateOptions(3, factory,
+		computeLinkenOptions(WithNodeExpiredDuration(10*time.Second)))
+
+	s.nodeJoin("node01")
+	s.version++
+
+	s.nodeJoin("node02")
+	s.version++
+
+	assert.Equal(t, map[string]nodeInfo{
+		"node01": {},
+		"node02": {},
+	}, s.nodes)
+
+	assert.Equal(t, []partitionInfo{
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 2},
+	}, s.partitions)
+
+	mockTimer := &groupTimerMock{}
+	factory.newTimerFunc = func(name string, d time.Duration) groupTimer { return mockTimer }
+
+	s.nodeDisconnect("node02")
+
+	assert.Equal(t, map[string]nodeInfo{
+		"node01": {},
+		"node02": {
+			status: nodeStatusZombie,
+		},
+	}, s.nodes)
+
+	assert.Equal(t, 1, len(factory.newTimerCalls()))
+	assert.Equal(t, "node02", factory.newTimerCalls()[0].Name)
+	assert.Equal(t, 10*time.Second, factory.newTimerCalls()[0].D)
+
+	assert.Equal(t, 1, len(s.timers))
+
+	changed := s.nodeExpired("node02")
+	assert.Equal(t, true, changed)
+	assert.Equal(t, 0, len(s.timers))
+
+	assert.Equal(t, map[string]nodeInfo{
+		"node01": {},
+	}, s.nodes)
+
+	assert.Equal(t, []partitionInfo{
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+		{status: PartitionStatusStopping, owner: "node01", nextOwner: "", modVersion: 2},
+	}, s.partitions)
+
+	changed = s.nodeExpired("node02")
+	assert.Equal(t, false, changed)
+	assert.Equal(t, 0, len(s.timers))
+
+	assert.Equal(t, []partitionInfo{
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+		{status: PartitionStatusStopping, owner: "node01", nextOwner: "", modVersion: 2},
+	}, s.partitions)
+}
+
+func TestGroupState_NodeDisconnect_After_Leave(t *testing.T) {
+	factory := &groupTimerFactoryMock{}
+
+	s := newGroupStateOptions(3, factory,
+		computeLinkenOptions(WithNodeExpiredDuration(10*time.Second)))
+
+	s.nodeJoin("node01")
+	s.version++
+
+	s.nodeJoin("node02")
+	s.version++
+
+	s.nodeLeave("node02")
+	s.version++
+
+	s.nodeDisconnect("node02")
+	assert.Equal(t, map[string]nodeInfo{
+		"node01": {},
+	}, s.nodes)
+}
+
+func TestGroupState_NodeJoin_After_Disconnect(t *testing.T) {
+	factory := &groupTimerFactoryMock{}
+
+	s := newGroupStateOptions(3, factory,
+		computeLinkenOptions(WithNodeExpiredDuration(10*time.Second)))
+
+	s.nodeJoin("node01")
+	s.version++
+
+	s.nodeJoin("node02")
+	s.version++
+
+	mockTimer := &groupTimerMock{}
+	factory.newTimerFunc = func(name string, d time.Duration) groupTimer { return mockTimer }
+
+	s.nodeDisconnect("node02")
+
+	mockTimer.stopFunc = func() {}
+
+	changed := s.nodeJoin("node02")
+	assert.Equal(t, true, changed)
+
+	assert.Equal(t, map[string]nodeInfo{
+		"node01": {},
+		"node02": {},
+	}, s.nodes)
+	assert.Equal(t, 1, len(mockTimer.stopCalls()))
+	assert.Equal(t, 0, len(s.timers))
+
+	assert.Equal(t, []partitionInfo{
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 2},
 	}, s.partitions)
 }
