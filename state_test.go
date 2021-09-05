@@ -499,7 +499,7 @@ func TestGroupState_Rebalance_When_Stopping_Next_Owner_Empty(t *testing.T) {
 func TestGroupState_NodeDisconnect_And_Expired(t *testing.T) {
 	factory := &groupTimerFactoryMock{}
 
-	s := newGroupStateOptions(3, factory,
+	s := newGroupStateOptions(3, factory, nullGroupData{},
 		computeLinkenOptions(WithNodeExpiredDuration(10*time.Second)))
 
 	s.nodeJoin("node01")
@@ -565,7 +565,7 @@ func TestGroupState_NodeDisconnect_And_Expired(t *testing.T) {
 func TestGroupState_NodeDisconnect_After_Leave(t *testing.T) {
 	factory := &groupTimerFactoryMock{}
 
-	s := newGroupStateOptions(3, factory,
+	s := newGroupStateOptions(3, factory, nullGroupData{},
 		computeLinkenOptions(WithNodeExpiredDuration(10*time.Second)))
 
 	s.nodeJoin("node01")
@@ -586,7 +586,7 @@ func TestGroupState_NodeDisconnect_After_Leave(t *testing.T) {
 func TestGroupState_NodeJoin_After_Disconnect(t *testing.T) {
 	factory := &groupTimerFactoryMock{}
 
-	s := newGroupStateOptions(3, factory,
+	s := newGroupStateOptions(3, factory, nullGroupData{},
 		computeLinkenOptions(WithNodeExpiredDuration(10*time.Second)))
 
 	s.nodeJoin("node01")
@@ -617,4 +617,93 @@ func TestGroupState_NodeJoin_After_Disconnect(t *testing.T) {
 		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
 		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 2},
 	}, s.partitions)
+}
+
+func TestGroupState_With_Prev_State(t *testing.T) {
+	factory := &groupTimerFactoryMock{}
+	factory.newTimerFunc = func(name string, d time.Duration) groupTimer {
+		return &groupTimerMock{}
+	}
+
+	s := newGroupStateWithPrev(3, factory, groupData{
+		version: 10,
+		nodes: map[string]struct{}{
+			"node01": {}, "node02": {}, "node03": {},
+		},
+		partitions: []partitionInfo{
+			{status: PartitionStatusRunning, owner: "node01", modVersion: 8},
+			{status: PartitionStatusRunning, owner: "node02", modVersion: 9},
+			{status: PartitionStatusRunning, owner: "node03", modVersion: 10},
+		},
+	})
+
+	assert.Equal(t, groupVersion(11), s.version)
+	assert.Equal(t, map[string]nodeInfo{
+		"node01": {status: nodeStatusZombie},
+		"node02": {status: nodeStatusZombie},
+		"node03": {status: nodeStatusZombie},
+	}, s.nodes)
+
+	assert.Equal(t, []partitionInfo{
+		{status: PartitionStatusRunning, owner: "node01", modVersion: 8},
+		{status: PartitionStatusRunning, owner: "node02", modVersion: 9},
+		{status: PartitionStatusRunning, owner: "node03", modVersion: 10},
+	}, s.partitions)
+
+	calls := factory.newTimerCalls()
+	assert.Equal(t, 3, len(calls))
+
+	names := map[string]struct{}{
+		calls[0].Name: {},
+		calls[1].Name: {},
+		calls[2].Name: {},
+	}
+	assert.Equal(t, map[string]struct{}{
+		"node01": {},
+		"node02": {},
+		"node03": {},
+	}, names)
+}
+
+func TestGroupState_With_Prev_State_Need_Reallocate(t *testing.T) {
+	factory := &groupTimerFactoryMock{}
+	factory.newTimerFunc = func(name string, d time.Duration) groupTimer {
+		return &groupTimerMock{}
+	}
+
+	s := newGroupStateWithPrev(3, factory, groupData{
+		version: 10,
+		nodes: map[string]struct{}{
+			"node01": {}, "node02": {},
+		},
+		partitions: []partitionInfo{
+			{status: PartitionStatusRunning, owner: "node01", modVersion: 8},
+			{status: PartitionStatusRunning, owner: "node02", modVersion: 9},
+			{status: PartitionStatusRunning, owner: "node03", modVersion: 10},
+		},
+	})
+
+	assert.Equal(t, groupVersion(11), s.version)
+	assert.Equal(t, map[string]nodeInfo{
+		"node01": {status: nodeStatusZombie},
+		"node02": {status: nodeStatusZombie},
+	}, s.nodes)
+
+	assert.Equal(t, []partitionInfo{
+		{status: PartitionStatusRunning, owner: "node01", modVersion: 8},
+		{status: PartitionStatusRunning, owner: "node02", modVersion: 9},
+		{status: PartitionStatusStopping, owner: "node03", modVersion: 11, nextOwner: "node01"},
+	}, s.partitions)
+
+	calls := factory.newTimerCalls()
+	assert.Equal(t, 2, len(calls))
+
+	names := map[string]struct{}{
+		calls[0].Name: {},
+		calls[1].Name: {},
+	}
+	assert.Equal(t, map[string]struct{}{
+		"node01": {},
+		"node02": {},
+	}, names)
 }

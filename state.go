@@ -45,20 +45,63 @@ type partitionInfo struct {
 	modVersion groupVersion // modify version
 }
 
-func newGroupStateOptions(count int, factory groupTimerFactory, opts linkenOptions) *groupState {
-	return &groupState{
+type groupData struct {
+	version    groupVersion
+	nodes      map[string]struct{}
+	partitions []partitionInfo
+}
+
+type nullGroupData struct {
+	valid bool
+	data  groupData
+}
+
+func newGroupStateOptions(
+	count int, factory groupTimerFactory, prev nullGroupData, opts linkenOptions,
+) *groupState {
+	nodes := map[string]nodeInfo{}
+	partitions := make([]partitionInfo, count)
+	version := groupVersion(0)
+
+	if prev.valid {
+		version = prev.data.version
+		for n := range prev.data.nodes {
+			nodes[n] = nodeInfo{
+				status: nodeStatusAlive,
+			}
+		}
+		for i := range partitions {
+			partitions[i] = prev.data.partitions[i]
+		}
+	}
+
+	s := &groupState{
 		factory: factory,
 		options: opts,
 
-		version:    0,
-		nodes:      map[string]nodeInfo{},
-		partitions: make([]partitionInfo, count),
+		version:    version,
+		nodes:      nodes,
+		partitions: partitions,
 		timers:     map[string]groupTimer{},
 	}
+
+	if prev.valid {
+		for n := range prev.data.nodes {
+			s.nodeDisconnect(n)
+		}
+		s.reallocate()
+		s.version++
+	}
+
+	return s
 }
 
 func newGroupState(count int) *groupState {
-	return newGroupStateOptions(count, nil, computeLinkenOptions())
+	return newGroupStateOptions(count, nil, nullGroupData{}, computeLinkenOptions())
+}
+
+func newGroupStateWithPrev(count int, factory groupTimerFactory, prev groupData) *groupState {
+	return newGroupStateOptions(count, factory, nullGroupData{valid: true, data: prev}, computeLinkenOptions())
 }
 
 func (s *groupState) reallocateSinglePartition(id PartitionID, expectedName string) {
