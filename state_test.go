@@ -8,13 +8,13 @@ import (
 
 func TestGroupState_Init(t *testing.T) {
 	s := newGroupState(3)
-	assert.Equal(t, groupVersion(0), s.version)
+	assert.Equal(t, GroupVersion(0), s.version)
 	assert.Equal(t, 0, len(s.nodes))
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusInit},
-		{status: PartitionStatusInit},
-		{status: PartitionStatusInit},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusInit},
+		{Status: PartitionStatusInit},
+		{Status: PartitionStatusInit},
 	}, s.partitions)
 }
 
@@ -28,10 +28,10 @@ func TestGroupState_First_Join(t *testing.T) {
 		"node01": {status: nodeStatusAlive},
 	}, s.nodes)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
 	}, s.partitions)
 }
 
@@ -49,10 +49,10 @@ func TestGroupState_Second_Join(t *testing.T) {
 		"node02": {status: nodeStatusAlive},
 	}, s.nodes)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 2},
 	}, s.partitions)
 }
 
@@ -65,10 +65,10 @@ func TestGroupState_NotifyRunning_After_First_Join(t *testing.T) {
 
 	assert.Equal(t, true, changed)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
 	}, s.partitions)
 }
 
@@ -86,10 +86,10 @@ func TestGroupState_Join_Same_Node(t *testing.T) {
 		"node01": {status: nodeStatusAlive},
 	}, s.nodes)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
 	}, s.partitions)
 }
 
@@ -104,10 +104,10 @@ func TestGroupState_NotifyRunning_2_Times_After_First_Join(t *testing.T) {
 	changed = s.notifyRunning(0, "node01", 1)
 	assert.Equal(t, false, changed)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
 	}, s.partitions)
 }
 
@@ -119,10 +119,10 @@ func TestGroupState_NotifyRunning_With_Wrong_Owner_After_First_Join(t *testing.T
 	changed := s.notifyRunning(0, "node02", 1)
 	assert.Equal(t, false, changed)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
 	}, s.partitions)
 }
 
@@ -137,10 +137,10 @@ func TestGroupState_NotifyRunning_With_Wrong_Status(t *testing.T) {
 	changed := s.notifyRunning(2, "node01", 2)
 	assert.Equal(t, false, changed)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 2},
 	}, s.partitions)
 }
 
@@ -162,10 +162,10 @@ func TestGroupState_Node_Leave(t *testing.T) {
 		"node01": {status: nodeStatusAlive},
 	}, s.nodes)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", ModVersion: 2},
 	}, s.partitions)
 }
 
@@ -187,10 +187,10 @@ func TestGroupState_Node_Leave_Second_Times(t *testing.T) {
 		"node01": {status: nodeStatusAlive},
 	}, s.nodes)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", ModVersion: 2},
 	}, s.partitions)
 }
 
@@ -205,10 +205,10 @@ func TestGroupState_Notify_Stopped_After_Rebalance(t *testing.T) {
 	changed := s.notifyStopped(2, "node01", 2)
 	assert.Equal(t, true, changed)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node02", modVersion: 3},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node02", ModVersion: 3},
 	}, s.partitions)
 }
 
@@ -226,10 +226,10 @@ func TestGroupState_Notify_Stopped_2_Times(t *testing.T) {
 	changed = s.notifyStopped(2, "node01", 2)
 	assert.Equal(t, false, changed)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node02", modVersion: 3},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node02", ModVersion: 3},
 	}, s.partitions)
 }
 
@@ -244,10 +244,10 @@ func TestGroupState_Notify_Stopped_With_Wrong_Name(t *testing.T) {
 	changed := s.notifyStopped(2, "node03", 2)
 	assert.Equal(t, false, changed)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 2},
 	}, s.partitions)
 }
 
@@ -268,10 +268,10 @@ func TestGroupState_NotifyRunning_LastVersion_Not_Equal(t *testing.T) {
 	changed := s.notifyRunning(0, "node01", 2)
 	assert.Equal(t, false, changed)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
 	}, s.partitions)
 }
 
@@ -285,10 +285,10 @@ func TestGroupState_Notify_Stopped_LastVersion_Not_Equal(t *testing.T) {
 
 	s.notifyStopped(2, "node01", 1)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 2},
 	}, s.partitions)
 }
 
@@ -310,10 +310,10 @@ func TestGroupState_Node_Leave_Owner_When_Stopping(t *testing.T) {
 		"node02": {status: nodeStatusAlive},
 	}, s.nodes)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node02", modVersion: 3},
-		{status: PartitionStatusStarting, owner: "node02", modVersion: 3},
-		{status: PartitionStatusStarting, owner: "node02", modVersion: 3},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node02", ModVersion: 3},
+		{Status: PartitionStatusStarting, Owner: "node02", ModVersion: 3},
+		{Status: PartitionStatusStarting, Owner: "node02", ModVersion: 3},
 	}, s.partitions)
 }
 
@@ -331,10 +331,10 @@ func TestGroupState_Notify_Stopped_When_Next_Owner_Empty(t *testing.T) {
 	changed := s.notifyStopped(2, "node01", 2)
 	assert.Equal(t, true, changed)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 4},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 4},
 	}, s.partitions)
 }
 
@@ -347,12 +347,12 @@ func TestGroupState_Node_Leave_Become_Empty(t *testing.T) {
 	assert.Equal(t, true, changed)
 	s.version++
 
-	assert.Equal(t, groupVersion(2), s.version)
+	assert.Equal(t, GroupVersion(2), s.version)
 	assert.Equal(t, map[string]nodeInfo{}, s.nodes)
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusInit, modVersion: 2},
-		{status: PartitionStatusInit, modVersion: 2},
-		{status: PartitionStatusInit, modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusInit, ModVersion: 2},
+		{Status: PartitionStatusInit, ModVersion: 2},
+		{Status: PartitionStatusInit, ModVersion: 2},
 	}, s.partitions)
 }
 
@@ -370,11 +370,11 @@ func TestGroupState_Multi_Partition_Running(t *testing.T) {
 
 	s.version++
 
-	assert.Equal(t, groupVersion(2), s.version)
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
+	assert.Equal(t, GroupVersion(2), s.version)
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
 	}, s.partitions)
 }
 
@@ -392,11 +392,11 @@ func TestGroupState_Partition_Running_Then_Rebalance(t *testing.T) {
 	assert.Equal(t, true, changed)
 	s.version++
 
-	assert.Equal(t, groupVersion(3), s.version)
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 3},
+	assert.Equal(t, GroupVersion(3), s.version)
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 3},
 	}, s.partitions)
 }
 
@@ -409,42 +409,42 @@ func TestGroupState_Partition_Stopping_Then_Rebalance(t *testing.T) {
 	s.notifyRunning(1, "node01", 1)
 	s.version++
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
 	}, s.partitions)
 
 	s.nodeJoin("node02")
 	s.version++
 
-	assert.Equal(t, groupVersion(3), s.version)
+	assert.Equal(t, GroupVersion(3), s.version)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 3},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 3},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 3},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 3},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 3},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 3},
 	}, s.partitions)
 
 	changed := s.nodeJoin("node03")
 	assert.Equal(t, true, changed)
 	s.version++
 
-	assert.Equal(t, groupVersion(4), s.version)
+	assert.Equal(t, GroupVersion(4), s.version)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node03", modVersion: 4},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 3},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 3},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node03", modVersion: 3},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node03", ModVersion: 4},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 3},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 3},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node03", ModVersion: 3},
 	}, s.partitions)
 }
 
@@ -457,13 +457,13 @@ func TestGroupState_Rebalance_When_Stopping_Next_Owner_Empty(t *testing.T) {
 	s.notifyRunning(1, "node01", 1)
 	s.version++
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
 	}, s.partitions)
 
 	s.nodeJoin("node02")
@@ -472,27 +472,27 @@ func TestGroupState_Rebalance_When_Stopping_Next_Owner_Empty(t *testing.T) {
 	s.nodeLeave("node02")
 	s.version++
 
-	assert.Equal(t, groupVersion(4), s.version)
+	assert.Equal(t, GroupVersion(4), s.version)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "", modVersion: 3},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "", modVersion: 3},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "", modVersion: 3},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "", ModVersion: 3},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "", ModVersion: 3},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "", ModVersion: 3},
 	}, s.partitions)
 
 	s.nodeJoin("node03")
 	s.version++
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 2},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node03", modVersion: 3},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node03", modVersion: 3},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node03", modVersion: 3},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node03", ModVersion: 3},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node03", ModVersion: 3},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node03", ModVersion: 3},
 	}, s.partitions)
 }
 
@@ -513,10 +513,10 @@ func TestGroupState_NodeDisconnect_And_Expired(t *testing.T) {
 		"node02": {},
 	}, s.nodes)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 2},
 	}, s.partitions)
 
 	mockTimer := &groupTimerMock{}
@@ -545,20 +545,20 @@ func TestGroupState_NodeDisconnect_And_Expired(t *testing.T) {
 		"node01": {},
 	}, s.nodes)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "", modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "", ModVersion: 2},
 	}, s.partitions)
 
 	changed = s.nodeExpired("node02")
 	assert.Equal(t, false, changed)
 	assert.Equal(t, 0, len(s.timers))
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "", modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "", ModVersion: 2},
 	}, s.partitions)
 }
 
@@ -603,7 +603,7 @@ func TestGroupState_NodeJoin_After_Disconnect(t *testing.T) {
 	mockTimer.stopFunc = func() {}
 
 	changed := s.nodeJoin("node02")
-	assert.Equal(t, true, changed)
+	assert.Equal(t, false, changed)
 
 	assert.Equal(t, map[string]nodeInfo{
 		"node01": {},
@@ -612,10 +612,10 @@ func TestGroupState_NodeJoin_After_Disconnect(t *testing.T) {
 	assert.Equal(t, 1, len(mockTimer.stopCalls()))
 	assert.Equal(t, 0, len(s.timers))
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStarting, owner: "node01", modVersion: 1},
-		{status: PartitionStatusStopping, owner: "node01", nextOwner: "node02", modVersion: 2},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 2},
 	}, s.partitions)
 }
 
@@ -630,24 +630,24 @@ func TestGroupState_With_Prev_State(t *testing.T) {
 		nodes: map[string]struct{}{
 			"node01": {}, "node02": {}, "node03": {},
 		},
-		partitions: []partitionInfo{
-			{status: PartitionStatusRunning, owner: "node01", modVersion: 8},
-			{status: PartitionStatusRunning, owner: "node02", modVersion: 9},
-			{status: PartitionStatusRunning, owner: "node03", modVersion: 10},
+		partitions: []PartitionInfo{
+			{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 8},
+			{Status: PartitionStatusRunning, Owner: "node02", ModVersion: 9},
+			{Status: PartitionStatusRunning, Owner: "node03", ModVersion: 10},
 		},
 	})
 
-	assert.Equal(t, groupVersion(11), s.version)
+	assert.Equal(t, GroupVersion(11), s.version)
 	assert.Equal(t, map[string]nodeInfo{
 		"node01": {status: nodeStatusZombie},
 		"node02": {status: nodeStatusZombie},
 		"node03": {status: nodeStatusZombie},
 	}, s.nodes)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 8},
-		{status: PartitionStatusRunning, owner: "node02", modVersion: 9},
-		{status: PartitionStatusRunning, owner: "node03", modVersion: 10},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 8},
+		{Status: PartitionStatusRunning, Owner: "node02", ModVersion: 9},
+		{Status: PartitionStatusRunning, Owner: "node03", ModVersion: 10},
 	}, s.partitions)
 
 	calls := factory.newTimerCalls()
@@ -676,23 +676,23 @@ func TestGroupState_With_Prev_State_Need_Reallocate(t *testing.T) {
 		nodes: map[string]struct{}{
 			"node01": {}, "node02": {},
 		},
-		partitions: []partitionInfo{
-			{status: PartitionStatusRunning, owner: "node01", modVersion: 8},
-			{status: PartitionStatusRunning, owner: "node02", modVersion: 9},
-			{status: PartitionStatusRunning, owner: "node03", modVersion: 10},
+		partitions: []PartitionInfo{
+			{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 8},
+			{Status: PartitionStatusRunning, Owner: "node02", ModVersion: 9},
+			{Status: PartitionStatusRunning, Owner: "node03", ModVersion: 10},
 		},
 	})
 
-	assert.Equal(t, groupVersion(11), s.version)
+	assert.Equal(t, GroupVersion(11), s.version)
 	assert.Equal(t, map[string]nodeInfo{
 		"node01": {status: nodeStatusZombie},
 		"node02": {status: nodeStatusZombie},
 	}, s.nodes)
 
-	assert.Equal(t, []partitionInfo{
-		{status: PartitionStatusRunning, owner: "node01", modVersion: 8},
-		{status: PartitionStatusRunning, owner: "node02", modVersion: 9},
-		{status: PartitionStatusStopping, owner: "node03", modVersion: 11, nextOwner: "node01"},
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 8},
+		{Status: PartitionStatusRunning, Owner: "node02", ModVersion: 9},
+		{Status: PartitionStatusStopping, Owner: "node03", ModVersion: 11, NextOwner: "node01"},
 	}, s.partitions)
 
 	calls := factory.newTimerCalls()

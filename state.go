@@ -16,7 +16,8 @@ type nodeInfo struct {
 	status nodeStatus
 }
 
-type groupVersion uint64
+// GroupVersion ...
+type GroupVersion uint64
 
 //go:generate moq -out state_mocks_test.go . groupTimer groupTimerFactory
 
@@ -32,23 +33,24 @@ type groupState struct {
 	factory groupTimerFactory
 	options linkenOptions
 
-	version    groupVersion
+	version    GroupVersion
 	nodes      map[string]nodeInfo
-	partitions []partitionInfo
+	partitions []PartitionInfo
 	timers     map[string]groupTimer
 }
 
-type partitionInfo struct {
-	status     PartitionStatus
-	owner      string
-	nextOwner  string
-	modVersion groupVersion // modify version
+// PartitionInfo ...
+type PartitionInfo struct {
+	Status     PartitionStatus `json:"status"`
+	Owner      string          `json:"owner"`
+	NextOwner  string          `json:"nextOwner"`
+	ModVersion GroupVersion    `json:"modVersion"`
 }
 
 type groupData struct {
-	version    groupVersion
+	version    GroupVersion
 	nodes      map[string]struct{}
-	partitions []partitionInfo
+	partitions []PartitionInfo
 }
 
 type nullGroupData struct {
@@ -60,8 +62,8 @@ func newGroupStateOptions(
 	count int, factory groupTimerFactory, prev nullGroupData, opts linkenOptions,
 ) *groupState {
 	nodes := map[string]nodeInfo{}
-	partitions := make([]partitionInfo, count)
-	version := groupVersion(0)
+	partitions := make([]PartitionInfo, count)
+	version := GroupVersion(0)
 
 	if prev.valid {
 		version = prev.data.version
@@ -107,31 +109,31 @@ func newGroupStateWithPrev(count int, factory groupTimerFactory, prev groupData)
 func (s *groupState) reallocateSinglePartition(id PartitionID, expectedName string) {
 	prev := s.partitions[id]
 
-	if prev.status == PartitionStatusInit {
-		s.partitions[id] = partitionInfo{
-			status:     PartitionStatusStarting,
-			owner:      expectedName,
-			nextOwner:  "",
-			modVersion: s.version + 1,
+	if prev.Status == PartitionStatusInit {
+		s.partitions[id] = PartitionInfo{
+			Status:     PartitionStatusStarting,
+			Owner:      expectedName,
+			NextOwner:  "",
+			ModVersion: s.version + 1,
 		}
 		return
 	}
 
-	if prev.owner == expectedName {
+	if prev.Owner == expectedName {
 		return
 	}
 
-	if prev.status == PartitionStatusStarting || prev.status == PartitionStatusRunning {
-		s.partitions[id] = partitionInfo{
-			status:     PartitionStatusStopping,
-			owner:      prev.owner,
-			nextOwner:  expectedName,
-			modVersion: s.version + 1,
+	if prev.Status == PartitionStatusStarting || prev.Status == PartitionStatusRunning {
+		s.partitions[id] = PartitionInfo{
+			Status:     PartitionStatusStopping,
+			Owner:      prev.Owner,
+			NextOwner:  expectedName,
+			ModVersion: s.version + 1,
 		}
 		return
 	}
 
-	s.partitions[id].nextOwner = expectedName
+	s.partitions[id].NextOwner = expectedName
 }
 
 func (s *groupState) reallocate() {
@@ -149,17 +151,17 @@ func (s *groupState) reallocate() {
 	for i, p := range s.partitions {
 		id := PartitionID(i)
 
-		if p.status == PartitionStatusInit {
+		if p.Status == PartitionStatusInit {
 			continue
 		}
 
-		if p.status == PartitionStatusStopping {
-			if p.nextOwner != "" {
-				currentName := p.nextOwner
+		if p.Status == PartitionStatusStopping {
+			if p.NextOwner != "" {
+				currentName := p.NextOwner
 				current[currentName] = append(current[currentName], id)
 			}
 		} else {
-			currentName := p.owner
+			currentName := p.Owner
 			current[currentName] = append(current[currentName], id)
 		}
 	}
@@ -174,8 +176,6 @@ func (s *groupState) reallocate() {
 }
 
 func (s *groupState) nodeJoin(name string) bool {
-	defer s.reallocate()
-
 	prev, existed := s.nodes[name]
 	if existed && prev.status == nodeStatusAlive {
 		return false
@@ -184,53 +184,58 @@ func (s *groupState) nodeJoin(name string) bool {
 	if prev.status == nodeStatusZombie {
 		s.timers[name].stop()
 		delete(s.timers, name)
+
+		s.nodes[name] = nodeInfo{}
+		return false
 	}
+
+	defer s.reallocate()
 
 	s.nodes[name] = nodeInfo{}
 	return true
 }
 
-func (s *groupState) notifyRunning(id PartitionID, owner string, lastVersion groupVersion) bool {
+func (s *groupState) notifyRunning(id PartitionID, owner string, lastVersion GroupVersion) bool {
 	prev := s.partitions[id]
 
-	if prev.owner != owner {
+	if prev.Owner != owner {
 		return false
 	}
-	if lastVersion != prev.modVersion {
+	if lastVersion != prev.ModVersion {
 		return false
 	}
-	if prev.status != PartitionStatusStarting {
+	if prev.Status != PartitionStatusStarting {
 		return false
 	}
 
-	s.partitions[id].status = PartitionStatusRunning
-	s.partitions[id].modVersion = s.version + 1
+	s.partitions[id].Status = PartitionStatusRunning
+	s.partitions[id].ModVersion = s.version + 1
 	return true
 }
 
-func (s *groupState) notifyStopped(id PartitionID, owner string, lastVersion groupVersion) bool {
+func (s *groupState) notifyStopped(id PartitionID, owner string, lastVersion GroupVersion) bool {
 	prev := s.partitions[id]
 
-	if prev.owner != owner {
+	if prev.Owner != owner {
 		return false
 	}
-	if prev.modVersion != lastVersion {
+	if prev.ModVersion != lastVersion {
 		return false
 	}
-	if prev.status != PartitionStatusStopping {
+	if prev.Status != PartitionStatusStopping {
 		return false
 	}
 
-	if prev.nextOwner != "" {
-		s.partitions[id] = partitionInfo{
-			status:     PartitionStatusStarting,
-			owner:      prev.nextOwner,
-			modVersion: s.version + 1,
+	if prev.NextOwner != "" {
+		s.partitions[id] = PartitionInfo{
+			Status:     PartitionStatusStarting,
+			Owner:      prev.NextOwner,
+			ModVersion: s.version + 1,
 		}
 	} else {
-		s.partitions[id] = partitionInfo{
-			status:     PartitionStatusInit,
-			modVersion: s.version + 1,
+		s.partitions[id] = PartitionInfo{
+			Status:     PartitionStatusInit,
+			ModVersion: s.version + 1,
 		}
 		s.reallocate()
 	}
@@ -247,23 +252,23 @@ func (s *groupState) nodeLeave(name string) bool {
 	defer s.reallocate()
 
 	for i, prev := range s.partitions {
-		if prev.status == PartitionStatusStopping {
-			if prev.owner == name {
-				s.partitions[i] = partitionInfo{
-					status:     PartitionStatusStarting,
-					owner:      prev.nextOwner,
-					modVersion: s.version + 1,
+		if prev.Status == PartitionStatusStopping {
+			if prev.Owner == name {
+				s.partitions[i] = PartitionInfo{
+					Status:     PartitionStatusStarting,
+					Owner:      prev.NextOwner,
+					ModVersion: s.version + 1,
 				}
-			} else if prev.nextOwner == name {
-				s.partitions[i].nextOwner = ""
+			} else if prev.NextOwner == name {
+				s.partitions[i].NextOwner = ""
 			}
 			continue
 		}
 
-		if prev.owner == name {
-			s.partitions[i] = partitionInfo{
-				status:     PartitionStatusInit,
-				modVersion: s.version + 1,
+		if prev.Owner == name {
+			s.partitions[i] = PartitionInfo{
+				Status:     PartitionStatusInit,
+				ModVersion: s.version + 1,
 			}
 		}
 	}
