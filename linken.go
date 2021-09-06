@@ -1,9 +1,13 @@
 package linken
 
 import (
+	"errors"
 	"sync"
 	"time"
 )
+
+// ErrInvalidPartitionCount ...
+var ErrInvalidPartitionCount = errors.New("number of partitions not matched")
 
 // InitGroupData ...
 type InitGroupData struct {
@@ -27,6 +31,12 @@ type NotifyPartitionData struct {
 	LastVersion GroupVersion `json:"lastVersion"`
 }
 
+// WatchRequest ...
+type WatchRequest struct {
+	FromVersion  GroupVersion
+	ResponseChan chan<- GroupData
+}
+
 // Linken ...
 type Linken struct {
 	options linkenOptions
@@ -37,48 +47,86 @@ type Linken struct {
 
 type linkenGroup struct {
 	mut      sync.Mutex
+	count    int
 	state    *groupState
 	waitList []chan<- GroupData
 }
 
 // New ...
 func New(options ...Option) *Linken {
-	return &Linken{}
+	return &Linken{
+		groups: map[string]*linkenGroup{},
+	}
 }
 
-// Join ...
-func (l *Linken) Join(groupName string, nodeName string, count int, prevState *GroupData) {
+func (l *Linken) getGroup(
+	groupName string, inputHandler func(g *linkenGroup) error,
+	initFn func() *linkenGroup,
+) error {
+	handler := func(g *linkenGroup) error {
+		defer g.mut.Unlock()
+		return inputHandler(g)
+	}
+
 	l.mut.RLock()
 	group, ok := l.groups[groupName]
 	if ok {
 		group.mut.Lock()
 		l.mut.RUnlock()
-		group.nodeJoin(nodeName)
-		return
+		return handler(group)
 	}
 	l.mut.RUnlock()
 
 	l.mut.Lock()
 	group, ok = l.groups[groupName]
 	if !ok {
-		// TODO from prevState
-		prev := nullGroupData{}
-		group = &linkenGroup{
-			state: newGroupStateOptions(count, groupTimerFactoryImpl{}, prev, l.options),
-		}
+		group = initFn()
 		l.groups[groupName] = group
 	}
-
 	group.mut.Lock()
 	l.mut.Unlock()
-	group.nodeJoin(nodeName)
+	return handler(group)
 }
 
-func (g *linkenGroup) nodeJoin(name string) {
-	defer g.mut.Unlock()
+func (l *Linken) initLinkenGroup(g *linkenGroup, count int) {
+	// TODO from prevState
+	prev := nullGroupData{}
+	g.count = count
+	g.state = newGroupStateOptions(count, groupTimerFactoryImpl{}, prev, l.options)
+}
+
+// Join ...
+func (l *Linken) Join(groupName string, nodeName string, count int, prevState *GroupData) error {
+	return l.getGroup(groupName, func(g *linkenGroup) error {
+		if g.state == nil {
+			l.initLinkenGroup(g, count)
+		}
+		return g.nodeJoin(nodeName, count)
+	}, func() *linkenGroup {
+		g := &linkenGroup{}
+		l.initLinkenGroup(g, count)
+		return g
+	})
+}
+
+// Watch ...
+func (l *Linken) Watch(groupName string, req WatchRequest) {
+	_ = l.getGroup(groupName, func(g *linkenGroup) error {
+		req.ResponseChan <- g.state.toGroupData()
+		return nil
+	}, func() *linkenGroup {
+		return &linkenGroup{}
+	})
+}
+
+func (g *linkenGroup) nodeJoin(name string, count int) error {
+	if g.count != count {
+		return ErrInvalidPartitionCount
+	}
 
 	changed := g.state.nodeJoin(name)
 	g.groupChanged(changed)
+	return nil
 }
 
 func (g *linkenGroup) nodeDisconnect(name string) {

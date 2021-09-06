@@ -293,3 +293,17 @@ func (s *groupState) nodeExpired(name string) bool {
 	delete(s.timers, name)
 	return s.nodeLeave(name)
 }
+
+func (s *groupState) toGroupData() GroupData {
+	nodes := make([]string, 0, len(s.nodes))
+	for n := range s.nodes {
+		nodes = append(nodes, n)
+	}
+	sort.Strings(nodes)
+
+	return GroupData{
+		Version:    s.version,
+		Nodes:      nodes,
+		Partitions: s.partitions,
+	}
+}
