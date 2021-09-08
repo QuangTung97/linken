@@ -125,3 +125,56 @@ func TestLinken_Join_With_Prev_State(t *testing.T) {
 		},
 	}, d)
 }
+
+func TestLinken_Leave_Normal(t *testing.T) {
+	l := New()
+	err := l.Join("group01", "node01", 3, nil)
+	assert.Equal(t, nil, err)
+
+	err = l.Join("group01", "node02", 3, nil)
+	assert.Equal(t, nil, err)
+
+	l.Leave("group01", "node02")
+
+	ch := make(chan GroupData, 1)
+	l.Watch("group01", WatchRequest{
+		FromVersion:  0,
+		ResponseChan: ch,
+	})
+
+	d := getGroupDataChan(ch)
+	assert.Equal(t, GroupData{
+		Version: 3,
+		Nodes:   []string{"node01"},
+		Partitions: []PartitionInfo{
+			{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+			{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+			{Status: PartitionStatusStopping, Owner: "node01", ModVersion: 2},
+		},
+	}, d)
+}
+
+func TestLinken_Leave_Not_Joined(t *testing.T) {
+	l := New()
+	l.Leave("group01", "node-random")
+
+	ch := make(chan GroupData, 1)
+	l.Watch("group01", WatchRequest{
+		FromVersion:  0,
+		ResponseChan: ch,
+	})
+
+	err := l.Join("group01", "node01", 3, nil)
+	assert.Equal(t, nil, err)
+
+	d := getGroupDataChan(ch)
+	assert.Equal(t, GroupData{
+		Version: 1,
+		Nodes:   []string{"node01"},
+		Partitions: []PartitionInfo{
+			{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+			{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+			{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		},
+	}, d)
+}

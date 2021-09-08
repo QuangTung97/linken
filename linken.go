@@ -107,6 +107,19 @@ func (l *Linken) Join(groupName string, nodeName string, count int, prevState *G
 	})
 }
 
+// Leave ...
+func (l *Linken) Leave(groupName string, nodeName string) {
+	_ = l.getGroup(groupName, func(g *linkenGroup) error {
+		if g.state == nil {
+			return nil
+		}
+		g.nodeLeave(nodeName)
+		return nil
+	}, func() *linkenGroup {
+		return &linkenGroup{}
+	})
+}
+
 // Watch ...
 func (l *Linken) Watch(groupName string, req WatchRequest) {
 	_ = l.getGroup(groupName, func(g *linkenGroup) error {
@@ -132,28 +145,20 @@ func (g *linkenGroup) nodeJoin(name string, count int) error {
 }
 
 func (g *linkenGroup) nodeDisconnect(name string) {
-	defer g.mut.Unlock()
-
 	g.state.nodeDisconnect(name)
 }
 
 func (g *linkenGroup) nodeLeave(name string) {
-	defer g.mut.Unlock()
-
 	changed := g.state.nodeLeave(name)
 	g.groupChanged(changed)
 }
 
 func (g *linkenGroup) nodeExpired(name string) {
-	defer g.mut.Unlock()
-
 	changed := g.state.nodeExpired(name)
 	g.groupChanged(changed)
 }
 
 func (g *linkenGroup) notifyRunning(id PartitionID, owner string, lastVersion GroupVersion) {
-	defer g.mut.Unlock()
-
 	changed := g.state.notifyRunning(id, owner, lastVersion)
 	g.groupChanged(changed)
 }
