@@ -499,7 +499,7 @@ func TestGroupState_Rebalance_When_Stopping_Next_Owner_Empty(t *testing.T) {
 func TestGroupState_NodeDisconnect_And_Expired(t *testing.T) {
 	factory := &groupTimerFactoryMock{}
 
-	s := newGroupStateOptions(3, factory, nullGroupData{},
+	s := newGroupStateOptions(3, factory, nil,
 		computeLinkenOptions(WithNodeExpiredDuration(10*time.Second)))
 
 	s.nodeJoin("node01")
@@ -565,7 +565,7 @@ func TestGroupState_NodeDisconnect_And_Expired(t *testing.T) {
 func TestGroupState_NodeDisconnect_After_Leave(t *testing.T) {
 	factory := &groupTimerFactoryMock{}
 
-	s := newGroupStateOptions(3, factory, nullGroupData{},
+	s := newGroupStateOptions(3, factory, nil,
 		computeLinkenOptions(WithNodeExpiredDuration(10*time.Second)))
 
 	s.nodeJoin("node01")
@@ -586,7 +586,7 @@ func TestGroupState_NodeDisconnect_After_Leave(t *testing.T) {
 func TestGroupState_NodeJoin_After_Disconnect(t *testing.T) {
 	factory := &groupTimerFactoryMock{}
 
-	s := newGroupStateOptions(3, factory, nullGroupData{},
+	s := newGroupStateOptions(3, factory, nil,
 		computeLinkenOptions(WithNodeExpiredDuration(10*time.Second)))
 
 	s.nodeJoin("node01")
@@ -625,12 +625,10 @@ func TestGroupState_With_Prev_State(t *testing.T) {
 		return &groupTimerMock{}
 	}
 
-	s := newGroupStateWithPrev(3, factory, groupData{
-		version: 10,
-		nodes: map[string]struct{}{
-			"node01": {}, "node02": {}, "node03": {},
-		},
-		partitions: []PartitionInfo{
+	s := newGroupStateWithPrev(3, factory, &GroupData{
+		Version: 10,
+		Nodes:   []string{"node01", "node02", "node03"},
+		Partitions: []PartitionInfo{
 			{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 8},
 			{Status: PartitionStatusRunning, Owner: "node02", ModVersion: 9},
 			{Status: PartitionStatusRunning, Owner: "node03", ModVersion: 10},
@@ -671,12 +669,10 @@ func TestGroupState_With_Prev_State_Need_Reallocate(t *testing.T) {
 		return &groupTimerMock{}
 	}
 
-	s := newGroupStateWithPrev(3, factory, groupData{
-		version: 10,
-		nodes: map[string]struct{}{
-			"node01": {}, "node02": {},
-		},
-		partitions: []PartitionInfo{
+	s := newGroupStateWithPrev(3, factory, &GroupData{
+		Version: 10,
+		Nodes:   []string{"node01", "node02"},
+		Partitions: []PartitionInfo{
 			{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 8},
 			{Status: PartitionStatusRunning, Owner: "node02", ModVersion: 9},
 			{Status: PartitionStatusRunning, Owner: "node03", ModVersion: 10},

@@ -47,33 +47,22 @@ type PartitionInfo struct {
 	ModVersion GroupVersion    `json:"modVersion"`
 }
 
-type groupData struct {
-	version    GroupVersion
-	nodes      map[string]struct{}
-	partitions []PartitionInfo
-}
-
-type nullGroupData struct {
-	valid bool
-	data  groupData
-}
-
 func newGroupStateOptions(
-	count int, factory groupTimerFactory, prev nullGroupData, opts linkenOptions,
+	count int, factory groupTimerFactory, prev *GroupData, opts linkenOptions,
 ) *groupState {
 	nodes := map[string]nodeInfo{}
 	partitions := make([]PartitionInfo, count)
 	version := GroupVersion(0)
 
-	if prev.valid {
-		version = prev.data.version
-		for n := range prev.data.nodes {
+	if prev != nil {
+		version = prev.Version
+		for _, n := range prev.Nodes {
 			nodes[n] = nodeInfo{
 				status: nodeStatusAlive,
 			}
 		}
 		for i := range partitions {
-			partitions[i] = prev.data.partitions[i]
+			partitions[i] = prev.Partitions[i]
 		}
 	}
 
@@ -87,8 +76,8 @@ func newGroupStateOptions(
 		timers:     map[string]groupTimer{},
 	}
 
-	if prev.valid {
-		for n := range prev.data.nodes {
+	if prev != nil {
+		for _, n := range prev.Nodes {
 			s.nodeDisconnect(n)
 		}
 		s.reallocate()
@@ -99,11 +88,11 @@ func newGroupStateOptions(
 }
 
 func newGroupState(count int) *groupState {
-	return newGroupStateOptions(count, nil, nullGroupData{}, computeLinkenOptions())
+	return newGroupStateOptions(count, nil, nil, computeLinkenOptions())
 }
 
-func newGroupStateWithPrev(count int, factory groupTimerFactory, prev groupData) *groupState {
-	return newGroupStateOptions(count, factory, nullGroupData{valid: true, data: prev}, computeLinkenOptions())
+func newGroupStateWithPrev(count int, factory groupTimerFactory, prev *GroupData) *groupState {
+	return newGroupStateOptions(count, factory, prev, computeLinkenOptions())
 }
 
 func (s *groupState) reallocateSinglePartition(id PartitionID, expectedName string) {
@@ -301,9 +290,14 @@ func (s *groupState) toGroupData() GroupData {
 	}
 	sort.Strings(nodes)
 
+	clone := make([]PartitionInfo, 0, len(s.partitions))
+	for _, p := range s.partitions {
+		clone = append(clone, p)
+	}
+
 	return GroupData{
 		Version:    s.version,
 		Nodes:      nodes,
-		Partitions: s.partitions,
+		Partitions: clone,
 	}
 }

@@ -88,23 +88,21 @@ func (l *Linken) getGroup(
 	return handler(group)
 }
 
-func (l *Linken) initLinkenGroup(g *linkenGroup, count int) {
-	// TODO from prevState
-	prev := nullGroupData{}
+func (l *Linken) initLinkenGroup(g *linkenGroup, count int, prevState *GroupData) {
 	g.count = count
-	g.state = newGroupStateOptions(count, groupTimerFactoryImpl{}, prev, l.options)
+	g.state = newGroupStateOptions(count, groupTimerFactoryImpl{}, prevState, l.options)
 }
 
 // Join ...
 func (l *Linken) Join(groupName string, nodeName string, count int, prevState *GroupData) error {
 	return l.getGroup(groupName, func(g *linkenGroup) error {
 		if g.state == nil {
-			l.initLinkenGroup(g, count)
+			l.initLinkenGroup(g, count, prevState)
 		}
 		return g.nodeJoin(nodeName, count)
 	}, func() *linkenGroup {
 		g := &linkenGroup{}
-		l.initLinkenGroup(g, count)
+		l.initLinkenGroup(g, count, prevState)
 		return g
 	})
 }
@@ -112,6 +110,10 @@ func (l *Linken) Join(groupName string, nodeName string, count int, prevState *G
 // Watch ...
 func (l *Linken) Watch(groupName string, req WatchRequest) {
 	_ = l.getGroup(groupName, func(g *linkenGroup) error {
+		if g.state == nil || g.state.version < req.FromVersion {
+			g.waitList = append(g.waitList, req.ResponseChan)
+			return nil
+		}
 		req.ResponseChan <- g.state.toGroupData()
 		return nil
 	}, func() *linkenGroup {
@@ -154,13 +156,17 @@ func (g *linkenGroup) notifyRunning(id PartitionID, owner string, lastVersion Gr
 
 	changed := g.state.notifyRunning(id, owner, lastVersion)
 	g.groupChanged(changed)
-
 }
 
 func (g *linkenGroup) groupChanged(changed bool) {
 	if changed {
 		g.state.version++
-		// TODO send to wait list
+
+		data := g.state.toGroupData()
+		for _, ch := range g.waitList {
+			ch <- data
+		}
+		g.waitList = g.waitList[:0]
 	}
 }
 
