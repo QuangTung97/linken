@@ -238,6 +238,9 @@ func TestLinken_Disconnect_And_Then_Expired(t *testing.T) {
 			{Status: PartitionStatusInit, Owner: "", ModVersion: 2},
 		},
 	}, d)
+
+	// Remove all group state after all data are empty
+	assert.Equal(t, 0, len(l.groups))
 }
 
 func TestLinken_Disconnect_And_Watch_Before_Expired(t *testing.T) {

@@ -242,6 +242,7 @@ func (s *groupState) nodeLeave(name string) bool {
 
 	for i, prev := range s.partitions {
 		if prev.Status == PartitionStatusStopping {
+			// TODO what happened if prev.NextOwner == ""
 			if prev.Owner == name {
 				s.partitions[i] = PartitionInfo{
 					Status:     PartitionStatusStarting,

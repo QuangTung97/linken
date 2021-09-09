@@ -60,13 +60,42 @@ func New(options ...Option) *Linken {
 	}
 }
 
+func (l *Linken) tryToDeleteGroup(groupName string) {
+	l.mut.Lock()
+	defer l.mut.Unlock()
+
+	group, ok := l.groups[groupName]
+	if !ok {
+		return
+	}
+
+	group.mut.Lock()
+	defer group.mut.Unlock()
+
+	if group.needDelete() {
+		delete(l.groups, groupName)
+	}
+}
+
 func (l *Linken) getGroup(
 	groupName string, inputHandler func(g *linkenGroup) error,
 	initFn func() *linkenGroup,
 ) error {
-	handler := func(g *linkenGroup) error {
+	needDelete, err := l.getGroupReturningNeedDelete(groupName, inputHandler, initFn)
+	if needDelete {
+		l.tryToDeleteGroup(groupName)
+	}
+	return err
+}
+
+func (l *Linken) getGroupReturningNeedDelete(
+	groupName string, inputHandler func(g *linkenGroup) error,
+	initFn func() *linkenGroup,
+) (bool, error) {
+	handler := func(g *linkenGroup) (bool, error) {
 		defer g.mut.Unlock()
-		return inputHandler(g)
+		err := inputHandler(g)
+		return g.needDelete(), err
 	}
 
 	l.mut.RLock()
@@ -86,6 +115,7 @@ func (l *Linken) getGroup(
 	}
 	group.mut.Lock()
 	l.mut.Unlock()
+
 	return handler(group)
 }
 
@@ -208,6 +238,10 @@ func (g *linkenGroup) groupChanged(changed bool) {
 		g.state.version++
 		g.pushResponseToWatchClients()
 	}
+}
+
+func (g *linkenGroup) needDelete() bool {
+	return g.state != nil && len(g.state.nodes) == 0 && len(g.waitList) == 0
 }
 
 type groupTimerImpl struct {
