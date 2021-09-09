@@ -96,10 +96,14 @@ func (l *Linken) initLinkenGroup(g *linkenGroup, count int, prevState *GroupData
 // Join ...
 func (l *Linken) Join(groupName string, nodeName string, count int, prevState *GroupData) error {
 	return l.getGroup(groupName, func(g *linkenGroup) error {
+		needResponseWatches := false
 		if g.state == nil {
 			l.initLinkenGroup(g, count, prevState)
+			if prevState != nil {
+				needResponseWatches = true
+			}
 		}
-		return g.nodeJoin(nodeName, count)
+		return g.nodeJoin(nodeName, count, needResponseWatches)
 	}, func() *linkenGroup {
 		g := &linkenGroup{}
 		l.initLinkenGroup(g, count, prevState)
@@ -134,13 +138,18 @@ func (l *Linken) Watch(groupName string, req WatchRequest) {
 	})
 }
 
-func (g *linkenGroup) nodeJoin(name string, count int) error {
+func (g *linkenGroup) nodeJoin(name string, count int, needResponseWatches bool) error {
 	if g.count != count {
 		return ErrInvalidPartitionCount
 	}
 
 	changed := g.state.nodeJoin(name)
-	g.groupChanged(changed)
+	if changed {
+		g.state.version++
+	}
+	if changed || needResponseWatches {
+		g.pushResponseToWatchClients()
+	}
 	return nil
 }
 
@@ -163,15 +172,18 @@ func (g *linkenGroup) notifyRunning(id PartitionID, owner string, lastVersion Gr
 	g.groupChanged(changed)
 }
 
+func (g *linkenGroup) pushResponseToWatchClients() {
+	data := g.state.toGroupData()
+	for _, ch := range g.waitList {
+		ch <- data
+	}
+	g.waitList = g.waitList[:0]
+}
+
 func (g *linkenGroup) groupChanged(changed bool) {
 	if changed {
 		g.state.version++
-
-		data := g.state.toGroupData()
-		for _, ch := range g.waitList {
-			ch <- data
-		}
-		g.waitList = g.waitList[:0]
+		g.pushResponseToWatchClients()
 	}
 }
 

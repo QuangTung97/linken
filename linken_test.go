@@ -126,6 +126,38 @@ func TestLinken_Join_With_Prev_State(t *testing.T) {
 	}, d)
 }
 
+func TestLinken_Join_With_Prev_State_When_Alreay_Watched(t *testing.T) {
+	l := New()
+
+	ch := make(chan GroupData, 1)
+	l.Watch("group01", WatchRequest{
+		FromVersion:  0,
+		ResponseChan: ch,
+	})
+
+	err := l.Join("group01", "node01", 3, &GroupData{
+		Version: 20,
+		Nodes:   []string{"node01", "node02", "node03"},
+		Partitions: []PartitionInfo{
+			{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 18},
+			{Status: PartitionStatusStarting, Owner: "node02", ModVersion: 19},
+			{Status: PartitionStatusStarting, Owner: "node03", ModVersion: 20},
+		},
+	})
+	assert.Equal(t, nil, err)
+
+	d := getGroupDataChan(ch)
+	assert.Equal(t, GroupData{
+		Version: 21,
+		Nodes:   []string{"node01", "node02", "node03"},
+		Partitions: []PartitionInfo{
+			{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 18},
+			{Status: PartitionStatusStarting, Owner: "node02", ModVersion: 19},
+			{Status: PartitionStatusStarting, Owner: "node03", ModVersion: 20},
+		},
+	}, d)
+}
+
 func TestLinken_Leave_Normal(t *testing.T) {
 	l := New()
 	err := l.Join("group01", "node01", 3, nil)
