@@ -55,7 +55,8 @@ type linkenGroup struct {
 // New ...
 func New(options ...Option) *Linken {
 	return &Linken{
-		groups: map[string]*linkenGroup{},
+		options: computeLinkenOptions(options...),
+		groups:  map[string]*linkenGroup{},
 	}
 }
 
@@ -88,9 +89,12 @@ func (l *Linken) getGroup(
 	return handler(group)
 }
 
-func (l *Linken) initLinkenGroup(g *linkenGroup, count int, prevState *GroupData) {
+func (l *Linken) initLinkenGroup(g *linkenGroup, groupName string, count int, prevState *GroupData) {
 	g.count = count
-	g.state = newGroupStateOptions(count, groupTimerFactoryImpl{}, prevState, l.options)
+	g.state = newGroupStateOptions(count, groupTimerFactoryImpl{
+		groupName: groupName,
+		root:      l,
+	}, prevState, l.options)
 }
 
 // Join ...
@@ -98,7 +102,7 @@ func (l *Linken) Join(groupName string, nodeName string, count int, prevState *G
 	return l.getGroup(groupName, func(g *linkenGroup) error {
 		needResponseWatches := false
 		if g.state == nil {
-			l.initLinkenGroup(g, count, prevState)
+			l.initLinkenGroup(g, groupName, count, prevState)
 			if prevState != nil {
 				needResponseWatches = true
 			}
@@ -106,21 +110,40 @@ func (l *Linken) Join(groupName string, nodeName string, count int, prevState *G
 		return g.nodeJoin(nodeName, count, needResponseWatches)
 	}, func() *linkenGroup {
 		g := &linkenGroup{}
-		l.initLinkenGroup(g, count, prevState)
+		l.initLinkenGroup(g, groupName, count, prevState)
 		return g
+	})
+}
+
+func (l *Linken) getGroupWithoutInit(groupName string, fn func(g *linkenGroup)) {
+	_ = l.getGroup(groupName, func(g *linkenGroup) error {
+		if g.state == nil {
+			return nil
+		}
+		fn(g)
+		return nil
+	}, func() *linkenGroup {
+		return &linkenGroup{}
 	})
 }
 
 // Leave ...
 func (l *Linken) Leave(groupName string, nodeName string) {
-	_ = l.getGroup(groupName, func(g *linkenGroup) error {
-		if g.state == nil {
-			return nil
-		}
+	l.getGroupWithoutInit(groupName, func(g *linkenGroup) {
 		g.nodeLeave(nodeName)
-		return nil
-	}, func() *linkenGroup {
-		return &linkenGroup{}
+	})
+}
+
+// Disconnect ...
+func (l *Linken) Disconnect(groupName string, nodeName string) {
+	l.getGroupWithoutInit(groupName, func(g *linkenGroup) {
+		g.nodeDisconnect(nodeName)
+	})
+}
+
+func (l *Linken) nodeTimerExpired(groupName string, nodeName string) {
+	l.getGroupWithoutInit(groupName, func(g *linkenGroup) {
+		g.nodeExpired(nodeName)
 	})
 }
 
@@ -199,6 +222,7 @@ func (s groupTimerImpl) stop() {
 
 type groupTimerFactoryImpl struct {
 	groupName string
+	root      *Linken
 }
 
 var _ groupTimerFactory = groupTimerFactoryImpl{}
@@ -206,7 +230,7 @@ var _ groupTimerFactory = groupTimerFactoryImpl{}
 func (f groupTimerFactoryImpl) newTimer(name string, d time.Duration) groupTimer {
 	return groupTimerImpl{
 		timer: time.AfterFunc(d, func() {
-			// TODO timer expired
+			f.root.nodeTimerExpired(f.groupName, name)
 		}),
 	}
 }
