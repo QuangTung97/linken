@@ -583,6 +583,36 @@ func TestGroupState_NodeDisconnect_After_Leave(t *testing.T) {
 	}, s.nodes)
 }
 
+func TestGroupState_Nodes_Join_Then_Leave_In_Order(t *testing.T) {
+	factory := &groupTimerFactoryMock{}
+
+	s := newGroupStateOptions(3, factory, nil, computeLinkenOptions())
+
+	changed := s.nodeJoin("node01")
+	assert.Equal(t, true, changed)
+	s.version++
+
+	changed = s.nodeJoin("node02")
+	assert.Equal(t, true, changed)
+	s.version++
+
+	changed = s.nodeLeave("node02")
+	assert.Equal(t, true, changed)
+	s.version++
+
+	changed = s.nodeLeave("node01")
+	assert.Equal(t, true, changed)
+	s.version++
+
+	assert.Equal(t, GroupVersion(4), s.version)
+	assert.Equal(t, map[string]nodeInfo{}, s.nodes)
+	assert.Equal(t, []PartitionInfo{
+		{Status: PartitionStatusInit, ModVersion: 4},
+		{Status: PartitionStatusInit, ModVersion: 4},
+		{Status: PartitionStatusInit, ModVersion: 4},
+	}, s.partitions)
+}
+
 func TestGroupState_NodeJoin_After_Disconnect(t *testing.T) {
 	factory := &groupTimerFactoryMock{}
 

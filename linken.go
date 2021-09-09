@@ -241,6 +241,7 @@ func (g *linkenGroup) groupChanged(changed bool) {
 }
 
 func (g *linkenGroup) needDelete() bool {
+	// TODO Add test case for cond: len(g.waitList) == 0
 	return g.state != nil && len(g.state.nodes) == 0 && len(g.waitList) == 0
 }
 
