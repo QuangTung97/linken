@@ -8,7 +8,7 @@ lint:
 	gocyclo -over 10 .
 
 test:
-	go test -v ./...
+	go test -v -tags integration ./...
 
 install-tools:
 	go install github.com/matryer/moq

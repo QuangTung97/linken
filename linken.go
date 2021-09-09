@@ -9,15 +9,6 @@ import (
 // ErrInvalidPartitionCount ...
 var ErrInvalidPartitionCount = errors.New("number of partitions not matched")
 
-// InitGroupData ...
-type InitGroupData struct {
-	GroupName      string     `json:"groupName"`
-	NodeName       string     `json:"nodeName"`
-	Secret         string     `json:"secret"`
-	PartitionCount int        `json:"partitionCount"`
-	PrevState      *GroupData `json:"prevState"`
-}
-
 // GroupData ...
 type GroupData struct {
 	Version    GroupVersion    `json:"version"`
