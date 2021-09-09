@@ -209,6 +209,30 @@ func (l *Linken) Watch(groupName string, req WatchRequest) {
 	})
 }
 
+func removeWaitListEntry(waitList []chan<- GroupData, ch chan<- GroupData) []chan<- GroupData {
+	removeIndex := len(waitList)
+	for i := 0; i < removeIndex; i++ {
+		if waitList[i] == ch {
+			removeIndex--
+			waitList[i], waitList[removeIndex] = waitList[removeIndex], waitList[i]
+		}
+	}
+	for i := range waitList[removeIndex:] {
+		waitList[removeIndex+i] = nil
+	}
+	return waitList[:removeIndex]
+}
+
+// RemoveWatch ...
+func (l *Linken) RemoveWatch(groupName string, ch chan<- GroupData) {
+	_ = l.getGroup(groupName, func(g *linkenGroup) error {
+		g.waitList = removeWaitListEntry(g.waitList, ch)
+		return nil
+	}, func() *linkenGroup {
+		return &linkenGroup{}
+	})
+}
+
 func (g *linkenGroup) nodeJoin(name string, count int, needResponseWatches bool) error {
 	if g.count != count {
 		return ErrInvalidPartitionCount
@@ -257,6 +281,9 @@ func (g *linkenGroup) pushResponseToWatchClients() {
 	for _, ch := range g.waitList {
 		ch <- data
 	}
+	for i := range g.waitList {
+		g.waitList[i] = nil
+	}
 	g.waitList = g.waitList[:0]
 }
 
@@ -268,8 +295,7 @@ func (g *linkenGroup) groupChanged(changed bool) {
 }
 
 func (g *linkenGroup) needDelete() bool {
-	// TODO Add test case for cond: len(g.waitList) == 0
-	return g.state != nil && len(g.state.nodes) == 0 && len(g.waitList) == 0
+	return (g.state == nil || len(g.state.nodes) == 0) && len(g.waitList) == 0
 }
 
 type groupTimerImpl struct {

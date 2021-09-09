@@ -319,3 +319,90 @@ func TestLinken_NotifyStopped(t *testing.T) {
 		},
 	}, getCurrentGroupData(l, "group01"))
 }
+
+func TestLinken_RemoveWatch(t *testing.T) {
+	l := New()
+
+	ch := make(chan GroupData, 1)
+	l.Watch("group01", WatchRequest{
+		FromVersion:  0,
+		ResponseChan: ch,
+	})
+
+	l.RemoveWatch("group01", ch)
+
+	err := l.Join("group01", "node01", 3, nil)
+	assert.Equal(t, nil, err)
+
+	d := getGroupDataChan(ch)
+	assert.Equal(t, GroupData{}, d)
+}
+
+func TestLinken_RemoveWatch_Before_Anything(t *testing.T) {
+	l := New()
+
+	ch01 := make(chan GroupData, 1)
+	l.RemoveWatch("group01", ch01)
+
+	ch02 := make(chan GroupData, 1)
+	l.Watch("group01", WatchRequest{
+		FromVersion:  0,
+		ResponseChan: ch02,
+	})
+
+	err := l.Join("group01", "node01", 3, nil)
+	assert.Equal(t, nil, err)
+
+	d := getGroupDataChan(ch01)
+	assert.Equal(t, GroupData{}, d)
+
+	d = getGroupDataChan(ch02)
+	assert.Equal(t, GroupVersion(1), d.Version)
+	assert.Equal(t, []string{"node01"}, d.Nodes)
+}
+
+func TestLinken_RemoveWatch_In_List_Of_Multi_Watches(t *testing.T) {
+	l := New()
+
+	ch01 := make(chan GroupData, 1)
+	ch02 := make(chan GroupData, 1)
+	ch03 := make(chan GroupData, 1)
+
+	l.Watch("group01", WatchRequest{ResponseChan: ch01})
+	l.Watch("group01", WatchRequest{ResponseChan: ch02})
+	l.Watch("group01", WatchRequest{ResponseChan: ch03})
+
+	l.RemoveWatch("group01", ch01)
+
+	err := l.Join("group01", "node01", 3, nil)
+	assert.Equal(t, nil, err)
+
+	d := getGroupDataChan(ch01)
+	assert.Equal(t, GroupData{}, d)
+
+	d = getGroupDataChan(ch02)
+	assert.Equal(t, GroupVersion(1), d.Version)
+	assert.Equal(t, []string{"node01"}, d.Nodes)
+
+	d = getGroupDataChan(ch03)
+	assert.Equal(t, GroupVersion(1), d.Version)
+	assert.Equal(t, []string{"node01"}, d.Nodes)
+}
+
+func TestLinken_Delete_Group_After_Remove_All_Watches(t *testing.T) {
+	l := New()
+
+	ch01 := make(chan GroupData, 1)
+	ch02 := make(chan GroupData, 1)
+	ch03 := make(chan GroupData, 1)
+
+	l.Watch("group01", WatchRequest{ResponseChan: ch01})
+	l.Watch("group01", WatchRequest{ResponseChan: ch02})
+	l.Watch("group01", WatchRequest{ResponseChan: ch03})
+
+	l.RemoveWatch("group01", ch01)
+	l.RemoveWatch("group01", ch02)
+	l.RemoveWatch("group01", ch03)
+
+	assert.Equal(t, 0, len(l.groups))
+}
