@@ -25,10 +25,21 @@ type GroupData struct {
 	Partitions []PartitionInfo `json:"partitions"`
 }
 
+// NotifyActionType ...
+type NotifyActionType int
+
+const (
+	// NotifyActionTypeRunning ...
+	NotifyActionTypeRunning NotifyActionType = 1
+	// NotifyActionTypeStopped ...
+	NotifyActionTypeStopped NotifyActionType = 2
+)
+
 // NotifyPartitionData ...
 type NotifyPartitionData struct {
-	Partition   PartitionID  `json:"partition"`
-	LastVersion GroupVersion `json:"lastVersion"`
+	Action      NotifyActionType `json:"action"`
+	Partition   PartitionID      `json:"partition"`
+	LastVersion GroupVersion     `json:"lastVersion"`
 }
 
 // WatchRequest ...
@@ -171,6 +182,13 @@ func (l *Linken) Disconnect(groupName string, nodeName string) {
 	})
 }
 
+// Notify ...
+func (l *Linken) Notify(groupName string, owner string, notifyList []NotifyPartitionData) {
+	l.getGroupWithoutInit(groupName, func(g *linkenGroup) {
+		g.notifyPartitions(owner, notifyList)
+	})
+}
+
 func (l *Linken) nodeTimerExpired(groupName string, nodeName string) {
 	l.getGroupWithoutInit(groupName, func(g *linkenGroup) {
 		g.nodeExpired(nodeName)
@@ -220,9 +238,18 @@ func (g *linkenGroup) nodeExpired(name string) {
 	g.groupChanged(changed)
 }
 
-func (g *linkenGroup) notifyRunning(id PartitionID, owner string, lastVersion GroupVersion) {
-	changed := g.state.notifyRunning(id, owner, lastVersion)
-	g.groupChanged(changed)
+func (g *linkenGroup) notifyPartitions(owner string, notifyList []NotifyPartitionData) {
+	resultChanged := false
+	for _, notify := range notifyList {
+		var changed bool
+		if notify.Action == NotifyActionTypeRunning {
+			changed = g.state.notifyRunning(notify.Partition, owner, notify.LastVersion)
+		} else {
+			changed = g.state.notifyStopped(notify.Partition, owner, notify.LastVersion)
+		}
+		resultChanged = resultChanged || changed
+	}
+	g.groupChanged(resultChanged)
 }
 
 func (g *linkenGroup) pushResponseToWatchClients() {

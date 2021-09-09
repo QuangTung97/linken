@@ -15,6 +15,15 @@ func getGroupDataChan(ch <-chan GroupData) GroupData {
 	}
 }
 
+func getCurrentGroupData(l *Linken, group string) GroupData {
+	ch := make(chan GroupData, 1)
+	l.Watch(group, WatchRequest{
+		FromVersion:  0,
+		ResponseChan: ch,
+	})
+	return getGroupDataChan(ch)
+}
+
 func TestLinken_Join_ErrInvalidPartitionCount(t *testing.T) {
 	l := New()
 	err := l.Join("group01", "node01", 3, nil)
@@ -32,13 +41,6 @@ func TestLinken_Watch_After_Changed(t *testing.T) {
 	err = l.Join("group01", "node02", 3, nil)
 	assert.Equal(t, nil, err)
 
-	ch := make(chan GroupData, 1)
-	l.Watch("group01", WatchRequest{
-		FromVersion:  0,
-		ResponseChan: ch,
-	})
-
-	d := getGroupDataChan(ch)
 	assert.Equal(t, GroupData{
 		Version: 2,
 		Nodes:   []string{"node01", "node02"},
@@ -47,7 +49,7 @@ func TestLinken_Watch_After_Changed(t *testing.T) {
 			{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
 			{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 2},
 		},
-	}, d)
+	}, getCurrentGroupData(l, "group01"))
 }
 
 func TestLinken_Watch_Before_Changed(t *testing.T) {
@@ -169,13 +171,6 @@ func TestLinken_Leave_Normal(t *testing.T) {
 
 	l.Leave("group01", "node02")
 
-	ch := make(chan GroupData, 1)
-	l.Watch("group01", WatchRequest{
-		FromVersion:  0,
-		ResponseChan: ch,
-	})
-
-	d := getGroupDataChan(ch)
 	assert.Equal(t, GroupData{
 		Version: 3,
 		Nodes:   []string{"node01"},
@@ -184,7 +179,7 @@ func TestLinken_Leave_Normal(t *testing.T) {
 			{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
 			{Status: PartitionStatusStopping, Owner: "node01", ModVersion: 2},
 		},
-	}, d)
+	}, getCurrentGroupData(l, "group01"))
 }
 
 func TestLinken_Leave_Not_Joined(t *testing.T) {
@@ -261,4 +256,66 @@ func TestLinken_Disconnect_And_Watch_Before_Expired(t *testing.T) {
 
 	d := getGroupDataChan(ch)
 	assert.Equal(t, GroupData{}, d)
+}
+
+func TestLinken_NotifyRunning(t *testing.T) {
+	l := New()
+
+	err := l.Join("group01", "node01", 3, nil)
+	assert.Equal(t, nil, err)
+
+	l.Notify("group01", "node01", []NotifyPartitionData{
+		{Action: NotifyActionTypeRunning, Partition: 0, LastVersion: 1},
+		{Action: NotifyActionTypeRunning, Partition: 1, LastVersion: 1},
+	})
+
+	assert.Equal(t, GroupData{
+		Version: 2,
+		Nodes:   []string{"node01"},
+		Partitions: []PartitionInfo{
+			{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+			{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+			{Status: PartitionStatusStarting, Owner: "node01", ModVersion: 1},
+		},
+	}, getCurrentGroupData(l, "group01"))
+}
+
+func TestLinken_NotifyStopped(t *testing.T) {
+	l := New()
+
+	err := l.Join("group01", "node01", 3, nil)
+	assert.Equal(t, nil, err)
+
+	l.Notify("group01", "node01", []NotifyPartitionData{
+		{Action: NotifyActionTypeRunning, Partition: 0, LastVersion: 1},
+		{Action: NotifyActionTypeRunning, Partition: 1, LastVersion: 1},
+		{Action: NotifyActionTypeRunning, Partition: 2, LastVersion: 1},
+	})
+
+	err = l.Join("group01", "node02", 3, nil)
+	assert.Equal(t, nil, err)
+
+	assert.Equal(t, GroupData{
+		Version: 3,
+		Nodes:   []string{"node01", "node02"},
+		Partitions: []PartitionInfo{
+			{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+			{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+			{Status: PartitionStatusStopping, Owner: "node01", NextOwner: "node02", ModVersion: 3},
+		},
+	}, getCurrentGroupData(l, "group01"))
+
+	l.Notify("group01", "node01", []NotifyPartitionData{
+		{Action: NotifyActionTypeStopped, Partition: 2, LastVersion: 3},
+	})
+
+	assert.Equal(t, GroupData{
+		Version: 4,
+		Nodes:   []string{"node01", "node02"},
+		Partitions: []PartitionInfo{
+			{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+			{Status: PartitionStatusRunning, Owner: "node01", ModVersion: 2},
+			{Status: PartitionStatusStarting, Owner: "node02", ModVersion: 4},
+		},
+	}, getCurrentGroupData(l, "group01"))
 }
