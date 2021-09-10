@@ -478,3 +478,94 @@ func TestWebsocketHandler_Notify_Failed_Validation(t *testing.T) {
 
 	tc.handler.Shutdown()
 }
+
+func TestWebsocketHandler_Multiple_Group(t *testing.T) {
+	tc := newTestCase()
+	defer tc.shutdown()
+
+	conn1 := connectToServer()
+	defer func() { _ = conn1.Close() }()
+
+	conn2 := connectToServer()
+	defer func() { _ = conn2.Close() }()
+
+	err := conn1.WriteJSON(ServerCommand{
+		Type: ServerCommandTypeJoin,
+		Join: &ServerJoinCommand{
+			GroupName:      "group01",
+			NodeName:       "node01",
+			PartitionCount: 2,
+		},
+	})
+	assert.Equal(t, nil, err)
+
+	err = conn2.WriteJSON(ServerCommand{
+		Type: ServerCommandTypeJoin,
+		Join: &ServerJoinCommand{
+			GroupName:      "group02",
+			NodeName:       "node02",
+			PartitionCount: 3,
+		},
+	})
+	assert.Equal(t, nil, err)
+
+	_, data, err := conn1.ReadMessage()
+	assert.Equal(t, nil, err)
+	expected := `
+{
+  "version": 1,
+  "nodes": [
+    "node01"
+  ],
+  "partitions": [
+    {
+      "status": 1,
+      "owner": "node01",
+      "nextOwner": "",
+      "modVersion": 1
+    },
+    {
+      "status": 1,
+      "owner": "node01",
+      "nextOwner": "",
+      "modVersion": 1
+    }
+  ]
+}
+`
+	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
+
+	_, data, err = conn2.ReadMessage()
+	assert.Equal(t, nil, err)
+	expected = `
+{
+  "version": 1,
+  "nodes": [
+    "node02"
+  ],
+  "partitions": [
+    {
+      "status": 1,
+      "owner": "node02",
+      "nextOwner": "",
+      "modVersion": 1
+    },
+    {
+      "status": 1,
+      "owner": "node02",
+      "nextOwner": "",
+      "modVersion": 1
+    },
+    {
+      "status": 1,
+      "owner": "node02",
+      "nextOwner": "",
+      "modVersion": 1
+    }
+  ]
+}
+`
+	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
+
+	tc.handler.Shutdown()
+}
