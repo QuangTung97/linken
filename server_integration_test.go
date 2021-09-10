@@ -46,7 +46,8 @@ func newTestCase(options ...Option) *testCase {
 		panic(err)
 	}
 
-	handler := NewWebsocketHandler(WithLogger(logger))
+	options = append(options, WithLogger(logger))
+	handler := NewWebsocketHandler(options...)
 
 	mux := http.NewServeMux()
 	mux.Handle("/core", handler)
@@ -363,5 +364,28 @@ func TestWebsocketHandler_Notify(t *testing.T) {
 	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
 
 	closeWebsocket(t, conn)
+	tc.handler.Shutdown()
+}
+
+func TestWebsocketHandler_Client_Closed_Unexpected(t *testing.T) {
+	tc := newTestCase(WithNodeExpiredDuration(50 * time.Millisecond))
+	defer tc.shutdown()
+
+	conn1 := connectToServer()
+	defer func() { _ = conn1.Close() }()
+
+	conn2 := connectToServer()
+	defer func() { _ = conn2.Close() }()
+
+	joinNodeForTest(t, conn1, "group01", "node01", 3)
+	joinNodeForTest(t, conn2, "group01", "node02", 3)
+
+	err := conn1.Close()
+	assert.Equal(t, nil, err)
+
+	msgType, _, err := conn2.ReadMessage()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, websocket.TextMessage, msgType)
+
 	tc.handler.Shutdown()
 }
