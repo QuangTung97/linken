@@ -30,7 +30,14 @@ type testCase struct {
 	wg      *sync.WaitGroup
 	handler *WebsocketHandler
 	server  *http.Server
-	conn    *websocket.Conn
+}
+
+func connectToServer() *websocket.Conn {
+	conn, _, err := websocket.DefaultDialer.Dial("ws://localhost:8765/core", nil)
+	if err != nil {
+		panic(err)
+	}
+	return conn
 }
 
 func newTestCase(options ...Option) *testCase {
@@ -62,22 +69,61 @@ func newTestCase(options ...Option) *testCase {
 
 	time.Sleep(50 * time.Millisecond)
 
-	conn, _, err := websocket.DefaultDialer.Dial("ws://localhost:8765/core", nil)
-	if err != nil {
-		panic(err)
-	}
-
 	return &testCase{
 		wg:      wg,
 		handler: handler,
 		server:  server,
-		conn:    conn,
 	}
 }
 
-func TestWebsocketHandler_Normal(t *testing.T) {
+func (tc *testCase) shutdown() {
+	tc.handler.Shutdown()
+	err := tc.server.Shutdown(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	tc.wg.Wait()
+}
+
+func closeWebsocket(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
+
+	err := conn.WriteMessage(websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	if err != nil {
+		panic(err)
+	}
+
+	msgType, data, err := conn.ReadMessage()
+	assert.Equal(t, &websocket.CloseError{Code: websocket.CloseNormalClosure}, err)
+	assert.Equal(t, -1, msgType)
+	assert.Equal(t, "", string(data))
+}
+
+func joinNodeForTest(t *testing.T, conn *websocket.Conn, groupName string, nodeName string, count int) {
+	t.Helper()
+
+	_ = conn.WriteJSON(ServerCommand{
+		Type: ServerCommandTypeJoin,
+		Join: &ServerJoinCommand{
+			GroupName:      groupName,
+			NodeName:       nodeName,
+			PartitionCount: count,
+		},
+	})
+
+	msgType, _, err := conn.ReadMessage()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, websocket.TextMessage, msgType)
+}
+
+func TestWebsocketHandler_HandShake_Normal(t *testing.T) {
 	tc := newTestCase()
-	conn := tc.conn
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
 
 	joinReq := `
 {
@@ -125,6 +171,145 @@ func TestWebsocketHandler_Normal(t *testing.T) {
 `
 	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
 
+	closeWebsocket(t, conn)
+	tc.handler.Shutdown()
+}
+
+func TestWebsocketHandler_HandShake_JSON_Error(t *testing.T) {
+	tc := newTestCase()
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
+
+	joinReq := `123`
+	_ = conn.WriteMessage(websocket.TextMessage, []byte(joinReq))
+
+	msgType, data, err := conn.ReadMessage()
+	assert.Equal(t, &websocket.CloseError{
+		Code: websocket.CloseAbnormalClosure,
+		Text: "unexpected EOF",
+	}, err)
+	assert.Equal(t, -1, msgType)
+	assert.Equal(t, "", string(data))
+
+	tc.handler.Shutdown()
+}
+
+func TestWebsocketHandler_HandShake_Wrong_Type(t *testing.T) {
+	tc := newTestCase()
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
+
+	joinReq := `
+{
+  "type": "notify"
+}
+
+`
+	_ = conn.WriteMessage(websocket.TextMessage, []byte(joinReq))
+
+	msgType, data, err := conn.ReadMessage()
+	assert.Equal(t, &websocket.CloseError{
+		Code: websocket.CloseAbnormalClosure,
+		Text: "unexpected EOF",
+	}, err)
+	assert.Equal(t, -1, msgType)
+	assert.Equal(t, "", string(data))
+
+	tc.handler.Shutdown()
+}
+
+func TestWebsocketHandler_HandShake_With_PrevState(t *testing.T) {
+	tc := newTestCase()
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
+
+	joinReq := `
+{
+  "type": "join",
+  "join": {
+    "groupName": "group01",
+    "nodeName": "node01",
+    "partitionCount": 3,
+    "prevState": {
+      "version": 10,
+      "nodes": ["node01", "node02"],
+      "partitions": [
+        {
+          "status": 1,
+          "owner": "node01",
+          "modVersion": 9
+        },
+        {
+          "status": 1,
+          "owner": "node01",
+          "modVersion": 9
+        },
+        {
+          "status": 1,
+          "owner": "node02",
+          "modVersion": 10
+        }
+      ]
+    }
+  }
+}
+`
+	_ = conn.WriteMessage(websocket.TextMessage, []byte(joinReq))
+
+	msgType, data, err := conn.ReadMessage()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, websocket.TextMessage, msgType)
+
+	expected := `
+{
+  "version": 11,
+  "nodes": [
+    "node01",
+    "node02"
+  ],
+  "partitions": [
+    {
+      "status": 1,
+      "owner": "node01",
+      "nextOwner": "",
+      "modVersion": 9
+    },
+    {
+      "status": 1,
+      "owner": "node01",
+      "nextOwner": "",
+      "modVersion": 9
+    },
+    {
+      "status": 1,
+      "owner": "node02",
+      "nextOwner": "",
+      "modVersion": 10
+    }
+  ]
+}
+`
+	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
+
+	closeWebsocket(t, conn)
+	tc.handler.Shutdown()
+}
+
+func TestWebsocketHandler_Notify(t *testing.T) {
+	tc := newTestCase()
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
+
+	joinNodeForTest(t, conn, "group01", "node01", 3)
+
 	_ = conn.WriteMessage(websocket.TextMessage, []byte(`
 {
   "type": "notify",
@@ -143,11 +328,11 @@ func TestWebsocketHandler_Normal(t *testing.T) {
 }
 `))
 
-	msgType, data, err = conn.ReadMessage()
+	msgType, data, err := conn.ReadMessage()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, websocket.TextMessage, msgType)
 
-	expected = `
+	expected := `
 {
   "version": 2,
   "nodes": [
@@ -177,23 +362,6 @@ func TestWebsocketHandler_Normal(t *testing.T) {
 `
 	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
 
-	err = conn.WriteMessage(websocket.CloseMessage,
-		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	if err != nil {
-		panic(err)
-	}
-
-	msgType, data, err = conn.ReadMessage()
-	assert.Equal(t, &websocket.CloseError{Code: websocket.CloseNormalClosure}, err)
-	assert.Equal(t, -1, msgType)
-	assert.Equal(t, "", string(data))
-
+	closeWebsocket(t, conn)
 	tc.handler.Shutdown()
-
-	err = tc.server.Shutdown(context.Background())
-	if err != nil {
-		panic(err)
-	}
-
-	tc.wg.Wait()
 }

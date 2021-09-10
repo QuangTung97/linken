@@ -126,6 +126,56 @@ type sessionData struct {
 	initVersion GroupVersion
 }
 
+func validatePrevState(prev *GroupData, partitionCount int) error {
+	if prev.Version <= 0 {
+		return errors.New("previous state 'version' field must >= 1")
+	}
+	if len(prev.Nodes) == 0 {
+		return errors.New("previous state 'nodes' field must not be empty")
+	}
+	if len(prev.Partitions) != partitionCount {
+		return errors.New("previous state 'partitions' field is missing")
+	}
+
+	for _, p := range prev.Partitions {
+		if p.Status < 0 || p.Status > PartitionStatusStopping {
+			return errors.New("previous state partitions 'status' field is invalid")
+		}
+		if p.ModVersion > prev.Version {
+			return errors.New("previous state partitions 'modVersion' field is too big")
+		}
+	}
+	return nil
+}
+func validateJoinCmd(cmd ServerCommand) error {
+	if cmd.Type != ServerCommandTypeJoin {
+		return errors.New("invalid cmd type, must be 'join'")
+	}
+	if cmd.Join == nil {
+		return errors.New("'join' field must not be empty")
+	}
+
+	join := cmd.Join
+	if len(join.GroupName) == 0 {
+		return errors.New("'groupName' field must not be empty")
+	}
+	if len(join.NodeName) == 0 {
+		return errors.New("'nodeName' field must not be empty")
+	}
+	if join.PartitionCount <= 0 {
+		return errors.New("'partitionCount' field must >= 1")
+	}
+
+	if join.PrevState != nil {
+		err := validatePrevState(join.PrevState, join.PartitionCount)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (h *WebsocketHandler) handShake(conn *websocket.Conn) (sessionData, bool) {
 	logger := h.options.logger
 
@@ -133,6 +183,12 @@ func (h *WebsocketHandler) handShake(conn *websocket.Conn) (sessionData, bool) {
 	err := conn.ReadJSON(&cmd)
 	if err != nil {
 		logger.Error("Error while ReadJSON", zap.Error(err))
+		return sessionData{}, false
+	}
+
+	err = validateJoinCmd(cmd)
+	if err != nil {
+		logger.Error("Validate Join Command", zap.Error(err))
 		return sessionData{}, false
 	}
 
