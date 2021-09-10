@@ -1,9 +1,12 @@
 package linken
 
 import (
+	"context"
+	"errors"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 	"net/http"
+	"sync"
 )
 
 // ServerCommandType ...
@@ -38,6 +41,8 @@ type WebsocketHandler struct {
 
 	upgrader websocket.Upgrader
 	linken   *Linken
+	rootCtx  context.Context
+	cancel   func()
 }
 
 var _ http.Handler = &WebsocketHandler{}
@@ -46,14 +51,29 @@ var _ http.Handler = &WebsocketHandler{}
 func NewWebsocketHandler(options ...Option) *WebsocketHandler {
 	l := New(options...)
 	opts := computeLinkenOptions(options...)
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &WebsocketHandler{
 		options: opts,
 		linken:  l,
+		rootCtx: ctx,
+		cancel:  cancel,
 	}
+}
+
+// Shutdown does graceful shutdown
+func (h *WebsocketHandler) Shutdown() {
+	h.cancel()
 }
 
 // ServeHTTP ...
 func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	r = r.WithContext(ctx)
+
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		h.options.logger.Error("Fail to upgrade to websocket", zap.Error(err))
@@ -63,18 +83,64 @@ func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close()
 	}()
 
-	var cmd ServerCommand
-	err = conn.ReadJSON(&cmd)
-	if err != nil {
-		h.options.logger.Error("Error while ReadJSON", zap.Error(err))
+	sess, ok := h.handShake(conn)
+	if !ok {
 		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+
+		select {
+		case <-h.rootCtx.Done():
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		h.receiveNotify(h.rootCtx, sess, conn)
+		cancel()
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		h.sendStateUpdate(ctx, sess, conn)
+		cancel()
+	}()
+
+	<-ctx.Done()
+
+	wg.Wait()
+}
+
+type sessionData struct {
+	groupName   string
+	nodeName    string
+	initVersion GroupVersion
+}
+
+func (h *WebsocketHandler) handShake(conn *websocket.Conn) (sessionData, bool) {
+	logger := h.options.logger
+
+	var cmd ServerCommand
+	err := conn.ReadJSON(&cmd)
+	if err != nil {
+		logger.Error("Error while ReadJSON", zap.Error(err))
+		return sessionData{}, false
 	}
 
 	joinCmd := cmd.Join
 	err = h.linken.Join(joinCmd.GroupName, joinCmd.NodeName, joinCmd.PartitionCount, joinCmd.PrevState)
 	if err != nil {
-		h.options.logger.Error("Error while Join", zap.Error(err))
-		return
+		logger.Error("Error while Join", zap.Error(err))
+		return sessionData{}, false
 	}
 
 	ch := make(chan GroupData, 1)
@@ -87,7 +153,75 @@ func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	err = conn.WriteJSON(groupData)
 	if err != nil {
-		h.options.logger.Error("Error while WriteJSON", zap.Error(err))
-		return
+		logger.Error("Error while WriteJSON", zap.Error(err))
+		return sessionData{}, false
+	}
+
+	return sessionData{
+		groupName:   joinCmd.GroupName,
+		nodeName:    joinCmd.NodeName,
+		initVersion: groupData.Version,
+	}, true
+}
+
+func (h *WebsocketHandler) receiveNotify(ctx context.Context, sess sessionData, conn *websocket.Conn) {
+	logger := h.options.logger
+	gracefulClosed := false
+	defer func() {
+		if !gracefulClosed {
+			h.linken.Disconnect(sess.groupName, sess.nodeName)
+		}
+	}()
+
+	for {
+		var cmd ServerCommand
+		err := conn.ReadJSON(&cmd)
+		if ctx.Err() != nil {
+			h.linken.Leave(sess.groupName, sess.nodeName)
+			gracefulClosed = true
+			return
+		}
+		if err != nil {
+			var closeErr *websocket.CloseError
+			if errors.As(err, &closeErr) && closeErr.Code == websocket.CloseNormalClosure {
+				h.linken.Leave(sess.groupName, sess.nodeName)
+				gracefulClosed = true
+				return
+			}
+
+			logger.Error("Error while ReadJSON", zap.Error(err))
+			return
+		}
+
+		h.linken.Notify(sess.groupName, sess.nodeName, cmd.Notify)
+	}
+}
+
+func (h *WebsocketHandler) sendStateUpdate(ctx context.Context, sess sessionData, conn *websocket.Conn) {
+	fromVersion := sess.initVersion + 1
+	ch := make(chan GroupData, 1)
+
+	for {
+		h.linken.Watch(sess.groupName, WatchRequest{
+			FromVersion:  fromVersion,
+			ResponseChan: ch,
+		})
+
+		select {
+		case data := <-ch:
+			err := conn.WriteJSON(data)
+			if ctx.Err() != nil {
+				return
+			}
+			if err != nil {
+				h.options.logger.Error("Error while WriteJSON", zap.Error(err))
+				return
+			}
+			fromVersion = data.Version + 1
+
+		case <-ctx.Done():
+			h.linken.RemoveWatch(sess.groupName, ch)
+			return
+		}
 	}
 }
