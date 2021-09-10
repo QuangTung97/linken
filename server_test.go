@@ -190,3 +190,87 @@ func TestValidateJoinCmd(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateNotifyCmd(t *testing.T) {
+	table := []struct {
+		name  string
+		count int
+		cmd   ServerCommand
+		err   error
+	}{
+		{
+			name: "wrong-type",
+			cmd: ServerCommand{
+				Type: ServerCommandTypeJoin,
+			},
+			err: errors.New("invalid cmd type, must be 'notify'"),
+		},
+		{
+			name: "invalid-action",
+			cmd: ServerCommand{
+				Type: ServerCommandTypeNotify,
+				Notify: []NotifyPartitionData{
+					{
+						Action: 0,
+					},
+				},
+			},
+			err: errors.New("invalid 'action' field"),
+		},
+		{
+			name: "invalid-action",
+			cmd: ServerCommand{
+				Type: ServerCommandTypeNotify,
+				Notify: []NotifyPartitionData{
+					{
+						Action: 3,
+					},
+				},
+			},
+			err: errors.New("invalid 'action' field"),
+		},
+		{
+			name:  "invalid-partition",
+			count: 3,
+			cmd: ServerCommand{
+				Type: ServerCommandTypeNotify,
+				Notify: []NotifyPartitionData{
+					{
+						Action:    NotifyActionTypeRunning,
+						Partition: 0,
+					},
+					{
+						Action:    NotifyActionTypeStopped,
+						Partition: 3,
+					},
+				},
+			},
+			err: errors.New("'partition' field is too big"),
+		},
+		{
+			name:  "ok",
+			count: 3,
+			cmd: ServerCommand{
+				Type: ServerCommandTypeNotify,
+				Notify: []NotifyPartitionData{
+					{
+						Action:    NotifyActionTypeRunning,
+						Partition: 0,
+					},
+					{
+						Action:    NotifyActionTypeStopped,
+						Partition: 2,
+					},
+				},
+			},
+			err: nil,
+		},
+	}
+
+	for _, e := range table {
+		t.Run(e.name, func(t *testing.T) {
+			err := validateNotifyCmd(e.cmd, e.count)
+			assert.Equal(t, e.err, err)
+		})
+	}
+}

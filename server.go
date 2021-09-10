@@ -121,9 +121,10 @@ func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type sessionData struct {
-	groupName   string
-	nodeName    string
-	initVersion GroupVersion
+	groupName      string
+	nodeName       string
+	partitionCount int
+	initVersion    GroupVersion
 }
 
 func validatePrevState(prev *GroupData, partitionCount int) error {
@@ -176,6 +177,21 @@ func validateJoinCmd(cmd ServerCommand) error {
 	return nil
 }
 
+func validateNotifyCmd(cmd ServerCommand, partitionCount int) error {
+	if cmd.Type != ServerCommandTypeNotify {
+		return errors.New("invalid cmd type, must be 'notify'")
+	}
+	for _, p := range cmd.Notify {
+		if p.Action < NotifyActionTypeRunning || p.Action > NotifyActionTypeStopped {
+			return errors.New("invalid 'action' field")
+		}
+		if p.Partition >= PartitionID(partitionCount) {
+			return errors.New("'partition' field is too big")
+		}
+	}
+	return nil
+}
+
 func (h *WebsocketHandler) handShake(conn *websocket.Conn) (sessionData, bool) {
 	logger := h.options.logger
 
@@ -214,9 +230,10 @@ func (h *WebsocketHandler) handShake(conn *websocket.Conn) (sessionData, bool) {
 	}
 
 	return sessionData{
-		groupName:   joinCmd.GroupName,
-		nodeName:    joinCmd.NodeName,
-		initVersion: groupData.Version,
+		groupName:      joinCmd.GroupName,
+		nodeName:       joinCmd.NodeName,
+		partitionCount: joinCmd.PartitionCount,
+		initVersion:    groupData.Version,
 	}, true
 }
 
@@ -246,6 +263,12 @@ func (h *WebsocketHandler) receiveNotify(ctx context.Context, sess sessionData, 
 			}
 
 			logger.Error("Error while ReadJSON", zap.Error(err))
+			return
+		}
+
+		err = validateNotifyCmd(cmd, sess.partitionCount)
+		if err != nil {
+			logger.Error("Validate Notify Command", zap.Error(err))
 			return
 		}
 

@@ -383,9 +383,98 @@ func TestWebsocketHandler_Client_Closed_Unexpected(t *testing.T) {
 	err := conn1.Close()
 	assert.Equal(t, nil, err)
 
-	msgType, _, err := conn2.ReadMessage()
+	msgType, data, err := conn2.ReadMessage()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, websocket.TextMessage, msgType)
+
+	expected := `
+{
+  "version": 3,
+  "nodes": [
+    "node02"
+  ],
+  "partitions": [
+    {
+      "status": 1,
+      "owner": "node02",
+      "nextOwner": "",
+      "modVersion": 3
+    },
+    {
+      "status": 1,
+      "owner": "node02",
+      "nextOwner": "",
+      "modVersion": 3
+    },
+    {
+      "status": 1,
+      "owner": "node02",
+      "nextOwner": "",
+      "modVersion": 3
+    }
+  ]
+}
+`
+	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
+
+	tc.handler.Shutdown()
+}
+
+func TestWebsocketHandler_Two_Clients_Closed(t *testing.T) {
+	tc := newTestCase()
+
+	conn1 := connectToServer()
+	defer func() { _ = conn1.Close() }()
+
+	conn2 := connectToServer()
+	defer func() { _ = conn2.Close() }()
+
+	joinNodeForTest(t, conn1, "group01", "node01", 3)
+	joinNodeForTest(t, conn2, "group01", "node02", 3)
+
+	err := conn1.WriteMessage(websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	assert.Equal(t, nil, err)
+
+	err = conn2.WriteMessage(websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	assert.Equal(t, nil, err)
+
+	tc.handler.Shutdown()
+	tc.shutdown()
+
+	assert.Equal(t, 0, len(tc.handler.linken.groups))
+}
+
+func TestWebsocketHandler_Notify_Failed_Validation(t *testing.T) {
+	tc := newTestCase()
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
+
+	joinNodeForTest(t, conn, "group01", "node01", 3)
+
+	_ = conn.WriteMessage(websocket.TextMessage, []byte(`
+{
+  "type": "notify",
+  "notify": [
+    {
+      "action": 1,
+      "partition": 3,
+      "lastVersion": 1
+    }
+  ]
+}
+`))
+
+	msgType, data, err := conn.ReadMessage()
+	assert.Equal(t, &websocket.CloseError{
+		Code: websocket.CloseAbnormalClosure,
+		Text: "unexpected EOF",
+	}, err)
+	assert.Equal(t, -1, msgType)
+	assert.Equal(t, "", string(data))
 
 	tc.handler.Shutdown()
 }
