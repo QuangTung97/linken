@@ -132,12 +132,12 @@ func TestWebsocketHandler_Normal(t *testing.T) {
     {
       "action": 1,
       "partition": 0,
-      "initVersion": 1
+      "lastVersion": 1
     },
     {
       "action": 1,
       "partition": 1,
-      "initVersion": 1
+      "lastVersion": 1
     }
   ]
 }

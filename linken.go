@@ -30,7 +30,7 @@ const (
 type NotifyPartitionData struct {
 	Action      NotifyActionType `json:"action"`
 	Partition   PartitionID      `json:"partition"`
-	LastVersion GroupVersion     `json:"initVersion"`
+	LastVersion GroupVersion     `json:"lastVersion"`
 }
 
 // WatchRequest ...
