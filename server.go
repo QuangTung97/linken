@@ -35,6 +35,11 @@ type ServerJoinCommand struct {
 	PrevState      *GroupData `json:"prevState"`
 }
 
+// ServerWatchRequest ...
+type ServerWatchRequest struct {
+	GroupName string `json:"groupName"`
+}
+
 // WebsocketHandler ...
 type WebsocketHandler struct {
 	options linkenOptions
@@ -66,13 +71,21 @@ func (h *WebsocketHandler) Shutdown() {
 	h.cancel()
 }
 
+func mergeContext(ctx context.Context, rootCtx context.Context) (context.Context, func()) {
+	resultCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		select {
+		case <-resultCtx.Done(): // avoid goroutine leak
+		case <-rootCtx.Done():
+			cancel()
+		}
+	}()
+	return resultCtx, cancel
+}
+
 // ServeHTTP ...
 func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	r = r.WithContext(ctx)
+	ctx, cancel := mergeContext(r.Context(), h.rootCtx)
 
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -89,17 +102,7 @@ func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(3)
-
-	go func() {
-		defer wg.Done()
-
-		select {
-		case <-h.rootCtx.Done():
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
+	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
@@ -303,4 +306,38 @@ func (h *WebsocketHandler) sendStateUpdate(ctx context.Context, sess sessionData
 			return
 		}
 	}
+}
+
+func (h *WebsocketHandler) readonlyFunc(w http.ResponseWriter, r *http.Request) {
+	logger := h.options.logger
+	ctx, cancel := mergeContext(r.Context(), h.rootCtx)
+	defer cancel()
+
+	conn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		logger.Error("Fail to upgrade to websocket", zap.Error(err))
+		return
+	}
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	var req ServerWatchRequest
+	err = conn.ReadJSON(&req)
+	if err != nil {
+		logger.Error("Error while ReadJSON", zap.Error(err))
+		return
+	}
+
+	if len(req.GroupName) == 0 {
+		logger.Error("groupName must not be empty", zap.Error(err))
+		return
+	}
+
+	h.sendStateUpdate(ctx, sessionData{groupName: req.GroupName}, conn)
+}
+
+// Readonly ...
+func (h *WebsocketHandler) Readonly() http.Handler {
+	return http.HandlerFunc(h.readonlyFunc)
 }

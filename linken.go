@@ -147,6 +147,7 @@ func (l *Linken) Join(groupName string, nodeName string, count int, prevState *G
 	})
 }
 
+//revive:disable-next-line:get-return
 func (l *Linken) getGroupWithoutInit(groupName string, fn func(g *linkenGroup)) {
 	_ = l.getGroup(groupName, func(g *linkenGroup) error {
 		if g.state == nil {
@@ -224,6 +225,7 @@ func (l *Linken) RemoveWatch(groupName string, ch chan<- GroupData) {
 	})
 }
 
+//revive:disable-next-line:flag-parameter
 func (g *linkenGroup) nodeJoin(name string, count int, needResponseWatches bool) error {
 	if g.count != count {
 		return ErrInvalidPartitionCount
@@ -278,6 +280,7 @@ func (g *linkenGroup) pushResponseToWatchClients() {
 	g.waitList = g.waitList[:0]
 }
 
+//revive:disable-next-line:flag-parameter
 func (g *linkenGroup) groupChanged(changed bool) {
 	if changed {
 		g.state.version++

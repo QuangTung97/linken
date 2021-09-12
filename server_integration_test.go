@@ -38,6 +38,37 @@ func connectToServer() *websocket.Conn {
 	return conn
 }
 
+func connectToServerReadonly() *websocket.Conn {
+	conn, _, err := websocket.DefaultDialer.Dial("ws://localhost:8765/readonly", nil)
+	if err != nil {
+		panic(err)
+	}
+	return conn
+}
+
+func connWriteText(t *testing.T, conn *websocket.Conn, s string) {
+	t.Helper()
+	err := conn.WriteMessage(websocket.TextMessage, []byte(s))
+	assert.Equal(t, nil, err)
+}
+
+func connReadText(t *testing.T, conn *websocket.Conn) string {
+	msgType, data, err := conn.ReadMessage()
+	assert.Equal(t, nil, err)
+	assert.Equal(t, websocket.TextMessage, msgType)
+	return string(data)
+}
+
+func assertCloseEOF(t *testing.T, conn *websocket.Conn) {
+	msgType, data, err := conn.ReadMessage()
+	assert.Equal(t, &websocket.CloseError{
+		Code: websocket.CloseAbnormalClosure,
+		Text: "unexpected EOF",
+	}, err)
+	assert.Equal(t, -1, msgType)
+	assert.Equal(t, "", string(data))
+}
+
 func newTestCase(options ...Option) *testCase {
 	logger, err := zap.NewDevelopment()
 	if err != nil {
@@ -49,6 +80,7 @@ func newTestCase(options ...Option) *testCase {
 
 	mux := http.NewServeMux()
 	mux.Handle("/core", handler)
+	mux.Handle("/readonly", handler.Readonly())
 	server := &http.Server{
 		Addr:    ":8765",
 		Handler: mux,
@@ -564,6 +596,80 @@ func TestWebsocketHandler_Multiple_Group(t *testing.T) {
 }
 `
 	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
+
+	tc.handler.Shutdown()
+}
+
+func TestWebsocketHandler_Readonly_Single_Node(t *testing.T) {
+	tc := newTestCase()
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
+
+	joinNodeForTest(t, conn, "group01", "node01", 3)
+
+	read := connectToServerReadonly()
+	defer func() { _ = read.Close() }()
+
+	connWriteText(t, read, `
+{
+  "groupName": "group01"
+}
+`)
+
+	resp := connReadText(t, read)
+	expected := `
+{
+  "version": 1,
+  "nodes": [
+    "node01"
+  ],
+  "partitions": [
+    {
+      "status": 1,
+      "owner": "node01",
+      "nextOwner": "",
+      "modVersion": 1
+    },
+    {
+      "status": 1,
+      "owner": "node01",
+      "nextOwner": "",
+      "modVersion": 1
+    },
+    {
+      "status": 1,
+      "owner": "node01",
+      "nextOwner": "",
+      "modVersion": 1
+    }
+  ]
+}
+`
+	assert.Equal(t, strings.TrimSpace(expected), formatJSON(resp))
+
+	tc.handler.Shutdown()
+}
+
+func TestWebsocketHandler_Readonly_Failed_Group_Empty(t *testing.T) {
+	tc := newTestCase()
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
+
+	joinNodeForTest(t, conn, "group01", "node01", 3)
+
+	read := connectToServerReadonly()
+	defer func() { _ = read.Close() }()
+
+	connWriteText(t, read, `
+{
+}
+`)
+
+	assertCloseEOF(t, read)
 
 	tc.handler.Shutdown()
 }

@@ -13,4 +13,5 @@ go:
 
 # run tests w/ coverage
 script:
+  - make lint
   - travis_retry $GOPATH/bin/goveralls -service=travis-ci
