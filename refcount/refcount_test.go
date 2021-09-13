@@ -8,6 +8,12 @@ import (
 func TestPointer_Empty_Pointer(t *testing.T) {
 	var p Pointer
 	assert.Equal(t, nil, p.Get())
+
+	p1 := p.Clone()
+	assert.Equal(t, nil, p1.Get())
+
+	p.Destroy()
+	p1.Destroy()
 }
 
 func TestPointer_New(t *testing.T) {
@@ -79,4 +85,18 @@ func TestPointer_Assign(t *testing.T) {
 	p1.Destroy()
 	assert.Equal(t, 1, calls01)
 	assert.Equal(t, 1, calls02)
+}
+
+func TestPointer_Empty_Assign(t *testing.T) {
+	var p Pointer
+	assert.Equal(t, nil, p.Get())
+
+	calls := 0
+	p1 := New(100, func() { calls++ })
+	p.Assign(p1)
+
+	p.Destroy()
+	assert.Equal(t, 0, calls)
+	p1.Destroy()
+	assert.Equal(t, 1, calls)
 }

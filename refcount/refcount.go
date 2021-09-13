@@ -45,6 +45,10 @@ func (p *Pointer) Get() interface{} {
 func (p *Pointer) Clone() Pointer {
 	for {
 		h := p.getHeader()
+		if h == nil {
+			return Pointer{}
+		}
+
 		ok := h.tryToIncreaseCount()
 		if !ok {
 			continue
@@ -58,6 +62,9 @@ func (p *Pointer) Clone() Pointer {
 // Destroy ...
 func (p *Pointer) Destroy() {
 	h := p.getHeader()
+	if h == nil {
+		return
+	}
 	atomic.StorePointer(&p.header, nil)
 	h.decrease()
 }
@@ -67,7 +74,9 @@ func (p *Pointer) Assign(other Pointer) {
 	tmp := other.Clone()
 	h := p.getHeader()
 	atomic.StorePointer(&p.header, tmp.header)
-	h.decrease()
+	if h != nil {
+		h.decrease()
+	}
 }
 
 func (h *pointerHeader) decrease() {
