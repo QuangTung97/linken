@@ -8,12 +8,18 @@ import (
 	"time"
 )
 
+type partitionUpdated struct {
+	id    PartitionID
+	owner string
+}
+
 func TestWebsocketClient(t *testing.T) {
 	tc := newTestCase()
 	defer tc.shutdown()
 
 	nodeCalls := 0
 	var listenedNodes []string
+	var updated []partitionUpdated
 
 	client := NewWebsocketClient(
 		"ws://localhost:8765/core",
@@ -23,6 +29,11 @@ func TestWebsocketClient(t *testing.T) {
 			nodeCalls++
 			listenedNodes = nodes
 		}),
+		WithClientPartitionListener(func(p PartitionID, owner string) {
+			updated = append(updated, partitionUpdated{
+				id: p, owner: owner,
+			})
+		}),
 		WithClientLogger(tc.logger),
 	)
 
@@ -30,15 +41,46 @@ func TestWebsocketClient(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-
 		client.Run()
 	}()
 
 	time.Sleep(50 * time.Millisecond)
 
-	client.Shutdown()
-	wg.Wait()
-
 	assert.Equal(t, []string{"node01"}, listenedNodes)
 	assert.Equal(t, 1, nodeCalls)
+	assert.Equal(t, []partitionUpdated{
+		{id: 0, owner: "node01"},
+		{id: 1, owner: "node01"},
+		{id: 2, owner: "node01"},
+	}, updated)
+
+	// ANOTHER CLIENT
+	anotherClient := NewWebsocketClient(
+		"ws://localhost:8765/core",
+		"group01", "node02", 3,
+		WithClientLogger(tc.logger),
+	)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		anotherClient.Run()
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+
+	assert.Equal(t, []string{"node01", "node02"}, listenedNodes)
+	assert.Equal(t, 2, nodeCalls)
+
+	assert.Equal(t, []partitionUpdated{
+		{id: 0, owner: "node01"},
+		{id: 1, owner: "node01"},
+		{id: 2, owner: "node01"},
+		{id: 2, owner: ""},
+		{id: 2, owner: "node02"},
+	}, updated)
+
+	client.Shutdown()
+	anotherClient.Shutdown()
+	wg.Wait()
 }
