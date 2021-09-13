@@ -28,6 +28,7 @@ type testCase struct {
 	wg      *sync.WaitGroup
 	handler *WebsocketHandler
 	server  *http.Server
+	logger  *zap.Logger
 }
 
 func connectToServer() *websocket.Conn {
@@ -104,6 +105,7 @@ func newTestCase(options ...Option) *testCase {
 		wg:      wg,
 		handler: handler,
 		server:  server,
+		logger:  logger,
 	}
 }
 
