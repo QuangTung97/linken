@@ -98,6 +98,7 @@ func (c *WebsocketClient) runInLoop() {
 		return
 	}
 
+	c.prevState = nil
 	for {
 		continuing := c.runSingleHandlingLoop(conn)
 		if !continuing {
@@ -121,13 +122,18 @@ func (c *WebsocketClient) runPartitionListener(data GroupData) {
 	for i, p := range data.Partitions {
 		id := PartitionID(i)
 
+		prev := PartitionInfo{}
+		if c.prevState != nil {
+			prev = c.prevState.Partitions[i]
+		}
+
 		prevOwner := ""
-		if c.prevState != nil && partitionStatusEffectivelyRunning(c.prevState.Partitions[i].Status) {
+		if prev.Status == PartitionStatusRunning {
 			prevOwner = c.prevState.Partitions[i].Owner
 		}
 
 		owner := ""
-		if partitionStatusEffectivelyRunning(p.Status) {
+		if p.Status == PartitionStatusRunning {
 			owner = p.Owner
 		}
 
@@ -142,10 +148,10 @@ func (c *WebsocketClient) runSingleHandlingLoop(conn *websocket.Conn) bool {
 
 	var data GroupData
 	err := conn.ReadJSON(&data)
-	if c.rootCtx.Err() != nil {
-		return false
-	}
 	if err != nil {
+		if errorIsCloseNormal(err) {
+			return false
+		}
 		logger.Error("Error while ReadJSON", zap.Error(err))
 		return false
 	}
@@ -238,8 +244,4 @@ func computeClientNotifyList(
 		}
 	}
 	return notifyList
-}
-
-func partitionStatusEffectivelyRunning(status PartitionStatus) bool {
-	return status == PartitionStatusRunning || status == PartitionStatusStopping
 }

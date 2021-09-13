@@ -258,8 +258,7 @@ func (h *WebsocketHandler) receiveNotify(ctx context.Context, sess sessionData, 
 			return
 		}
 		if err != nil {
-			var closeErr *websocket.CloseError
-			if errors.As(err, &closeErr) && closeErr.Code == websocket.CloseNormalClosure {
+			if errorIsCloseNormal(err) {
 				h.linken.Leave(sess.groupName, sess.nodeName)
 				gracefulClosed = true
 				return
@@ -340,4 +339,12 @@ func (h *WebsocketHandler) readonlyFunc(w http.ResponseWriter, r *http.Request) 
 // Readonly ...
 func (h *WebsocketHandler) Readonly() http.Handler {
 	return http.HandlerFunc(h.readonlyFunc)
+}
+
+func errorIsCloseNormal(err error) bool {
+	var closeErr *websocket.CloseError
+	if !errors.As(err, &closeErr) {
+		return false
+	}
+	return closeErr.Code == websocket.CloseNormalClosure
 }

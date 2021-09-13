@@ -67,7 +67,7 @@ func TestWebsocketClient(t *testing.T) {
 		anotherClient.Run()
 	}()
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	assert.Equal(t, []string{"node01", "node02"}, listenedNodes)
 	assert.Equal(t, 2, nodeCalls)
