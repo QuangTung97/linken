@@ -235,7 +235,9 @@ func TestLinken_Disconnect_And_Then_Expired(t *testing.T) {
 	}, d)
 
 	// Remove all group state after all data are empty
+	l.mut.RLock()
 	assert.Equal(t, 0, len(l.groups))
+	l.mut.RUnlock()
 }
 
 func TestLinken_Disconnect_And_Watch_Before_Expired(t *testing.T) {

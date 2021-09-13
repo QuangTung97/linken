@@ -1,16 +1,31 @@
 package refcount
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"sync/atomic"
 	"testing"
 )
 
+type resource struct {
+	num int
+}
+
+func newResource(n int) *resource {
+	return &resource{num: n}
+}
+
+func (r *resource) destroy() {
+	r.num = 11
+}
+
 func TestPointer_Stress_Test(t *testing.T) {
 	calls := uint32(0)
-	p := New(20, func() {
+	r := newResource(30)
+	p := New(r, func() {
 		atomic.AddUint32(&calls, 1)
+		r.destroy()
 	})
 
 	var wg sync.WaitGroup
@@ -19,8 +34,10 @@ func TestPointer_Stress_Test(t *testing.T) {
 		defer wg.Done()
 
 		for i := 0; i < 100000; i++ {
-			newPtr := New(30, func() {
+			res := newResource(30)
+			newPtr := New(res, func() {
 				atomic.AddUint32(&calls, 1)
+				res.destroy()
 			})
 			p.Assign(newPtr)
 			newPtr.Destroy()
@@ -31,6 +48,10 @@ func TestPointer_Stress_Test(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 200000; i++ {
 			tmp := p.Clone()
+			r := tmp.Get().(*resource)
+			if r.num != 30 {
+				panic(fmt.Sprint("Wrong value, real value: ", r.num))
+			}
 			tmp.Destroy()
 		}
 	}()

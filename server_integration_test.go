@@ -473,7 +473,9 @@ func TestWebsocketHandler_Two_Clients_Closed(t *testing.T) {
 	tc.handler.Shutdown()
 	tc.shutdown()
 
+	tc.handler.linken.mut.RLock()
 	assert.Equal(t, 0, len(tc.handler.linken.groups))
+	tc.handler.linken.mut.RUnlock()
 }
 
 func TestWebsocketHandler_Notify_Failed_Validation(t *testing.T) {
