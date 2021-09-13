@@ -3,6 +3,7 @@ package linken
 import (
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+	"time"
 )
 
 // ClientNodeListener ...
@@ -16,6 +17,7 @@ type clientOptions struct {
 	nodeListener      ClientNodeListener
 	partitionListener ClientPartitionListener
 	logger            *zap.Logger
+	retryDuration     time.Duration
 }
 
 // ClientOption ...
@@ -59,5 +61,12 @@ func WithClientDialer(dialer *websocket.Dialer) ClientOption {
 func WithClientLogger(logger *zap.Logger) ClientOption {
 	return func(opts *clientOptions) {
 		opts.logger = logger
+	}
+}
+
+// WithClientRetryDuration ...
+func WithClientRetryDuration(d time.Duration) ClientOption {
+	return func(opts *clientOptions) {
+		opts.retryDuration = d
 	}
 }

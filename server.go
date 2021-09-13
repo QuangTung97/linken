@@ -106,19 +106,17 @@ func (h *WebsocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		defer wg.Done()
+		defer cancel()
 
 		h.receiveNotify(h.rootCtx, sess, conn)
-		cancel()
 	}()
 
 	go func() {
 		defer wg.Done()
+		defer cancel()
 
 		h.sendStateUpdate(ctx, sess, conn)
-		cancel()
 	}()
-
-	<-ctx.Done()
 
 	wg.Wait()
 }
@@ -279,6 +277,9 @@ func (h *WebsocketHandler) receiveNotify(ctx context.Context, sess sessionData, 
 }
 
 func (h *WebsocketHandler) sendStateUpdate(ctx context.Context, sess sessionData, conn *websocket.Conn) {
+	logger := h.options.logger
+	defer closeConnGracefully(h.rootCtx, conn, logger)
+
 	fromVersion := sess.initVersion + 1
 	ch := make(chan GroupData, 1)
 
@@ -295,7 +296,7 @@ func (h *WebsocketHandler) sendStateUpdate(ctx context.Context, sess sessionData
 				return
 			}
 			if err != nil {
-				h.options.logger.Error("Error while WriteJSON", zap.Error(err))
+				logger.Error("Error while WriteJSON", zap.Error(err))
 				return
 			}
 			fromVersion = data.Version + 1
@@ -307,8 +308,19 @@ func (h *WebsocketHandler) sendStateUpdate(ctx context.Context, sess sessionData
 	}
 }
 
+func closeConnGracefully(rootCtx context.Context, conn *websocket.Conn, logger *zap.Logger) {
+	if rootCtx.Err() != nil {
+		err := conn.WriteMessage(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		if err != nil {
+			logger.Error("Error while close conn", zap.Error(err))
+		}
+	}
+}
+
 func (h *WebsocketHandler) readonlyFunc(w http.ResponseWriter, r *http.Request) {
 	logger := h.options.logger
+
 	ctx, cancel := mergeContext(r.Context(), h.rootCtx)
 	defer cancel()
 

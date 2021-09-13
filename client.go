@@ -5,6 +5,8 @@ import (
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 	"net/http"
+	"sync"
+	"time"
 )
 
 // WebsocketClient ...
@@ -43,35 +45,26 @@ func NewWebsocketClient(
 	}
 }
 
+func sleepContext(ctx context.Context, d time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
+	}
+}
+
 // Run ...
 func (c *WebsocketClient) Run() {
 	for {
 		c.runInLoop()
+		sleepContext(c.rootCtx, c.options.retryDuration)
 		if c.rootCtx.Err() != nil {
 			return
 		}
-		// sleep context
 	}
-}
-
-func (c *WebsocketClient) closeConnWhenShutdown(ctx context.Context, conn *websocket.Conn) {
-	go func() {
-		select {
-		case <-ctx.Done():
-		case <-c.rootCtx.Done():
-			err := conn.WriteMessage(websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			if err != nil {
-				c.options.logger.Error("Error while close conn", zap.Error(err))
-			}
-		}
-	}()
 }
 
 func (c *WebsocketClient) runInLoop() {
 	logger := c.options.logger
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	conn, _, err := c.options.dialer.DialContext(c.rootCtx, "ws://localhost:8765/core", nil)
 	if err != nil {
@@ -81,8 +74,6 @@ func (c *WebsocketClient) runInLoop() {
 	defer func() {
 		_ = conn.Close()
 	}()
-
-	c.closeConnWhenShutdown(ctx, conn)
 
 	err = conn.WriteJSON(ServerCommand{
 		Type: ServerCommandTypeJoin,
@@ -98,13 +89,37 @@ func (c *WebsocketClient) runInLoop() {
 		return
 	}
 
+	notifyCh := make(chan []NotifyPartitionData, 1)
+	ctx, cancel := context.WithCancel(c.rootCtx)
+
 	c.prevState = nil
-	for {
-		continuing := c.runSingleHandlingLoop(conn)
-		if !continuing {
-			return
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		defer cancel()
+
+		c.notifyServer(ctx, conn, notifyCh)
+	}()
+
+	go func() {
+		defer wg.Done()
+		defer cancel()
+
+		for {
+			continuing := c.runSingleHandlingLoop(ctx, conn, notifyCh)
+			if c.rootCtx.Err() != nil {
+				return
+			}
+			if !continuing {
+				return
+			}
 		}
-	}
+	}()
+
+	wg.Wait()
 }
 
 func (c *WebsocketClient) runNodeListener(data GroupData) {
@@ -143,7 +158,31 @@ func (c *WebsocketClient) runPartitionListener(data GroupData) {
 	}
 }
 
-func (c *WebsocketClient) runSingleHandlingLoop(conn *websocket.Conn) bool {
+func (c *WebsocketClient) notifyServer(ctx context.Context, conn *websocket.Conn, ch <-chan []NotifyPartitionData) {
+	logger := c.options.logger
+	defer closeConnGracefully(c.rootCtx, conn, logger)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case notifyList := <-ch:
+			err := conn.WriteJSON(ServerCommand{
+				Type:   ServerCommandTypeNotify,
+				Notify: notifyList,
+			})
+			if err != nil {
+				logger.Error("Error while WriteJSON", zap.Error(err))
+				return
+			}
+		}
+	}
+}
+
+func (c *WebsocketClient) runSingleHandlingLoop(
+	ctx context.Context, conn *websocket.Conn, notifyCh chan<- []NotifyPartitionData,
+) bool {
 	logger := c.options.logger
 
 	var data GroupData
@@ -166,13 +205,9 @@ func (c *WebsocketClient) runSingleHandlingLoop(conn *websocket.Conn) bool {
 
 	notifyList := computeClientNotifyList(c.nodeName, prevPartitions, data.Partitions)
 	if len(notifyList) > 0 {
-		err := conn.WriteJSON(ServerCommand{
-			Type:   ServerCommandTypeNotify,
-			Notify: notifyList,
-		})
-		if err != nil {
-			logger.Error("Error while WriteJSON", zap.Error(err))
-			return false
+		select {
+		case <-ctx.Done():
+		case notifyCh <- notifyList:
 		}
 	}
 

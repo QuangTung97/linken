@@ -225,8 +225,6 @@ func TestWebsocketHandler_HandShake_JSON_Error(t *testing.T) {
 	}, err)
 	assert.Equal(t, -1, msgType)
 	assert.Equal(t, "", string(data))
-
-	tc.handler.Shutdown()
 }
 
 func TestWebsocketHandler_HandShake_Wrong_Type(t *testing.T) {
@@ -251,8 +249,6 @@ func TestWebsocketHandler_HandShake_Wrong_Type(t *testing.T) {
 	}, err)
 	assert.Equal(t, -1, msgType)
 	assert.Equal(t, "", string(data))
-
-	tc.handler.Shutdown()
 }
 
 func TestWebsocketHandler_HandShake_With_PrevState(t *testing.T) {
@@ -331,7 +327,6 @@ func TestWebsocketHandler_HandShake_With_PrevState(t *testing.T) {
 	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
 
 	closeWebsocket(t, conn)
-	tc.handler.Shutdown()
 }
 
 func TestWebsocketHandler_Notify(t *testing.T) {
@@ -396,7 +391,6 @@ func TestWebsocketHandler_Notify(t *testing.T) {
 	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
 
 	closeWebsocket(t, conn)
-	tc.handler.Shutdown()
 }
 
 func TestWebsocketHandler_Client_Closed_Unexpected(t *testing.T) {
@@ -448,8 +442,6 @@ func TestWebsocketHandler_Client_Closed_Unexpected(t *testing.T) {
 }
 `
 	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
-
-	tc.handler.Shutdown()
 }
 
 func TestWebsocketHandler_Two_Clients_Closed(t *testing.T) {
@@ -472,7 +464,6 @@ func TestWebsocketHandler_Two_Clients_Closed(t *testing.T) {
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	assert.Equal(t, nil, err)
 
-	tc.handler.Shutdown()
 	tc.shutdown()
 
 	tc.handler.linken.mut.RLock()
@@ -509,8 +500,6 @@ func TestWebsocketHandler_Notify_Failed_Validation(t *testing.T) {
 	}, err)
 	assert.Equal(t, -1, msgType)
 	assert.Equal(t, "", string(data))
-
-	tc.handler.Shutdown()
 }
 
 func TestWebsocketHandler_Multiple_Group(t *testing.T) {
@@ -600,8 +589,6 @@ func TestWebsocketHandler_Multiple_Group(t *testing.T) {
 }
 `
 	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
-
-	tc.handler.Shutdown()
 }
 
 func TestWebsocketHandler_Readonly_Single_Node(t *testing.T) {
@@ -652,8 +639,6 @@ func TestWebsocketHandler_Readonly_Single_Node(t *testing.T) {
 }
 `
 	assert.Equal(t, strings.TrimSpace(expected), formatJSON(resp))
-
-	tc.handler.Shutdown()
 }
 
 func TestWebsocketHandler_Readonly_Failed_Group_Empty(t *testing.T) {
@@ -674,6 +659,4 @@ func TestWebsocketHandler_Readonly_Failed_Group_Empty(t *testing.T) {
 `)
 
 	assertCloseEOF(t, read)
-
-	tc.handler.Shutdown()
 }

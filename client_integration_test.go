@@ -84,3 +84,119 @@ func TestWebsocketClient(t *testing.T) {
 	anotherClient.Shutdown()
 	wg.Wait()
 }
+
+func TestWebsocketClient_Server_Restart_Not_Yet_ReRun_Client(t *testing.T) {
+	tc := newTestCase()
+
+	nodeCalls := 0
+	var listenedNodes []string
+	var updated []partitionUpdated
+
+	client := NewWebsocketClient(
+		"ws://localhost:8765/core",
+		"group01", "node01", 3,
+		WithClientDialer(websocket.DefaultDialer),
+		WithClientNodeListener(func(nodes []string) {
+			nodeCalls++
+			listenedNodes = nodes
+		}),
+		WithClientPartitionListener(func(p PartitionID, owner string) {
+			updated = append(updated, partitionUpdated{id: p, owner: owner})
+		}),
+		WithClientLogger(tc.logger),
+		WithClientRetryDuration(150*time.Millisecond),
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		client.Run()
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	assert.Equal(t, []string{"node01"}, listenedNodes)
+	assert.Equal(t, 1, nodeCalls)
+	assert.Equal(t, []partitionUpdated{
+		{id: 0, owner: "node01"},
+		{id: 1, owner: "node01"},
+		{id: 2, owner: "node01"},
+	}, updated)
+
+	// Server Restart
+	tc.shutdown()
+
+	tc = newTestCase()
+	defer tc.shutdown()
+
+	time.Sleep(50 * time.Millisecond)
+
+	assert.Equal(t, 1, nodeCalls)
+
+	client.Shutdown()
+	wg.Wait()
+}
+
+func TestWebsocketClient_Server_Restart(t *testing.T) {
+	tc := newTestCase()
+
+	nodeCalls := 0
+	var listenedNodes []string
+	var updated []partitionUpdated
+
+	client := NewWebsocketClient(
+		"ws://localhost:8765/core",
+		"group01", "node01", 3,
+		WithClientDialer(websocket.DefaultDialer),
+		WithClientNodeListener(func(nodes []string) {
+			nodeCalls++
+			listenedNodes = nodes
+		}),
+		WithClientPartitionListener(func(p PartitionID, owner string) {
+			updated = append(updated, partitionUpdated{id: p, owner: owner})
+		}),
+		WithClientLogger(tc.logger),
+		WithClientRetryDuration(150*time.Millisecond),
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		client.Run()
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	assert.Equal(t, []string{"node01"}, listenedNodes)
+	assert.Equal(t, 1, nodeCalls)
+	assert.Equal(t, []partitionUpdated{
+		{id: 0, owner: "node01"},
+		{id: 1, owner: "node01"},
+		{id: 2, owner: "node01"},
+	}, updated)
+
+	// Server Restart
+	tc.shutdown()
+
+	tc = newTestCase()
+	defer tc.shutdown()
+
+	time.Sleep(200 * time.Millisecond)
+
+	assert.Equal(t, 2, nodeCalls)
+	assert.Equal(t, []string{"node01"}, listenedNodes)
+
+	assert.Equal(t, []partitionUpdated{
+		{id: 0, owner: "node01"},
+		{id: 1, owner: "node01"},
+		{id: 2, owner: "node01"},
+		{id: 0, owner: "node01"},
+		{id: 1, owner: "node01"},
+		{id: 2, owner: "node01"},
+	}, updated)
+
+	client.Shutdown()
+	wg.Wait()
+}
