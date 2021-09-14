@@ -81,6 +81,7 @@ func (c *WebsocketClient) runInLoop() {
 			GroupName:      c.groupName,
 			NodeName:       c.nodeName,
 			PartitionCount: c.count,
+			Secret:         c.options.secret,
 			PrevState:      c.prevState,
 		},
 	})

@@ -18,6 +18,7 @@ type clientOptions struct {
 	partitionListener ClientPartitionListener
 	logger            *zap.Logger
 	retryDuration     time.Duration
+	secret            string
 }
 
 // ClientOption ...
@@ -29,6 +30,7 @@ func computeClientOptions(options ...ClientOption) clientOptions {
 		nodeListener:      func(nodes []string) {},
 		partitionListener: func(partition PartitionID, owner string) {},
 		logger:            zap.NewNop(),
+		retryDuration:     30 * time.Second,
 	}
 	for _, o := range options {
 		o(&opts)
@@ -68,5 +70,12 @@ func WithClientLogger(logger *zap.Logger) ClientOption {
 func WithClientRetryDuration(d time.Duration) ClientOption {
 	return func(opts *clientOptions) {
 		opts.retryDuration = d
+	}
+}
+
+// WithClientGroupSecret ...
+func WithClientGroupSecret(secret string) ClientOption {
+	return func(opts *clientOptions) {
+		opts.secret = secret
 	}
 }

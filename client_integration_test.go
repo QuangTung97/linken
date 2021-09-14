@@ -200,3 +200,32 @@ func TestWebsocketClient_Server_Restart(t *testing.T) {
 	client.Shutdown()
 	wg.Wait()
 }
+
+func TestWebsocketClient_With_Secret(t *testing.T) {
+	tc := newTestCase(WithGroupSecret("group01",
+		GroupSecret{Write: "write-secret", Read: "read-secret"}))
+	defer tc.shutdown()
+
+	nodeCalls := 0
+	client := NewWebsocketClient(
+		"ws://localhost:8765/core",
+		"group01", "node01", 3,
+		WithClientGroupSecret("write-secret"),
+		WithClientNodeListener(func(nodes []string) {
+			nodeCalls++
+		}),
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		client.Run()
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, 1, nodeCalls)
+	client.Shutdown()
+
+	wg.Wait()
+}
