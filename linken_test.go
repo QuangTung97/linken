@@ -408,3 +408,34 @@ func TestLinken_Delete_Group_After_Remove_All_Watches(t *testing.T) {
 
 	assert.Equal(t, 0, len(l.groups))
 }
+
+func TestRemoveWatchListEntry(t *testing.T) {
+	t.Run("normal", func(t *testing.T) {
+		a := make(chan GroupData)
+		b := make(chan GroupData)
+		c := make(chan GroupData)
+		d := make(chan GroupData)
+		e := make(chan GroupData)
+
+		result := removeWaitListEntry([]chan<- GroupData{a, b, c, d, e}, c)
+		assert.Equal(t, []chan<- GroupData{a, b, e, d}, result)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		e := make(chan GroupData)
+
+		result := removeWaitListEntry(nil, e)
+		assert.Equal(t, []chan<- GroupData(nil), result)
+	})
+
+	t.Run("not-in", func(t *testing.T) {
+		a := make(chan GroupData)
+		b := make(chan GroupData)
+		c := make(chan GroupData)
+		d := make(chan GroupData)
+		e := make(chan GroupData)
+
+		result := removeWaitListEntry([]chan<- GroupData{a, b, c, d}, e)
+		assert.Equal(t, []chan<- GroupData{a, b, c, d}, result)
+	})
+}
