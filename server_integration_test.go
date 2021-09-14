@@ -136,6 +136,14 @@ func closeWebsocket(t *testing.T, conn *websocket.Conn) {
 
 func joinNodeForTest(t *testing.T, conn *websocket.Conn, groupName string, nodeName string, count int) {
 	t.Helper()
+	joinNodeForTestWithSecret(t, conn, groupName, nodeName, count, "")
+}
+
+func joinNodeForTestWithSecret(
+	t *testing.T, conn *websocket.Conn,
+	groupName string, nodeName string, count int, secret string,
+) {
+	t.Helper()
 
 	_ = conn.WriteJSON(ServerCommand{
 		Type: ServerCommandTypeJoin,
@@ -143,6 +151,7 @@ func joinNodeForTest(t *testing.T, conn *websocket.Conn, groupName string, nodeN
 			GroupName:      groupName,
 			NodeName:       nodeName,
 			PartitionCount: count,
+			Secret:         secret,
 		},
 	})
 
@@ -591,6 +600,52 @@ func TestWebsocketHandler_Multiple_Group(t *testing.T) {
 	assert.Equal(t, strings.TrimSpace(expected), formatJSON(string(data)))
 }
 
+func TestWebsocketHandler_Join_Failed_Secret(t *testing.T) {
+	tc := newTestCase(WithGroupSecret("group01",
+		GroupSecret{Write: "write-secret", Read: "read-secret"}))
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
+
+	connWriteText(t, conn, `
+{
+  "type": "join",
+  "join": {
+    "groupName": "group01",
+    "nodeName": "node01",
+    "partitionCount": 3
+  }
+}
+`)
+	assertCloseEOF(t, conn)
+}
+
+func TestWebsocketHandler_Join_OK_With_Secret(t *testing.T) {
+	tc := newTestCase(WithGroupSecret("group01",
+		GroupSecret{Write: "write-secret", Read: "read-secret"}))
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
+
+	connWriteText(t, conn, `
+{
+  "type": "join",
+  "join": {
+    "groupName": "group01",
+    "nodeName": "node01",
+    "partitionCount": 3,
+    "secret": "write-secret"
+  }
+}
+`)
+	s := connReadText(t, conn)
+	assert.True(t, len(s) > 0)
+
+	closeWebsocket(t, conn)
+}
+
 func TestWebsocketHandler_Readonly_Single_Node(t *testing.T) {
 	tc := newTestCase()
 	defer tc.shutdown()
@@ -657,6 +712,28 @@ func TestWebsocketHandler_Readonly_Failed_Group_Empty(t *testing.T) {
 {
 }
 `)
+	assertCloseEOF(t, read)
+}
 
+func TestWebsocketHandler_Readonly_Missing_Read_Secret(t *testing.T) {
+	tc := newTestCase(WithGroupSecret("group01", GroupSecret{
+		Write: "write-secret",
+		Read:  "read-secret",
+	}))
+	defer tc.shutdown()
+
+	conn := connectToServer()
+	defer func() { _ = conn.Close() }()
+
+	joinNodeForTestWithSecret(t, conn, "group01", "node01", 3, "write-secret")
+
+	read := connectToServerReadonly()
+	defer func() { _ = read.Close() }()
+
+	connWriteText(t, read, `
+{
+  "groupName": "group01"
+}
+`)
 	assertCloseEOF(t, read)
 }

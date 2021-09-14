@@ -38,6 +38,7 @@ type ServerJoinCommand struct {
 // ServerWatchRequest ...
 type ServerWatchRequest struct {
 	GroupName string `json:"groupName"`
+	Secret    string `json:"secret"`
 }
 
 // WebsocketHandler ...
@@ -149,15 +150,8 @@ func validatePrevState(prev *GroupData, partitionCount int) error {
 	}
 	return nil
 }
-func validateJoinCmd(cmd ServerCommand) error {
-	if cmd.Type != ServerCommandTypeJoin {
-		return errors.New("invalid cmd type, must be 'join'")
-	}
-	if cmd.Join == nil {
-		return errors.New("'join' field must not be empty")
-	}
 
-	join := cmd.Join
+func validateJoinCmdBasicParams(join *ServerJoinCommand, groupSecrets map[string]GroupSecret) error {
 	if len(join.GroupName) == 0 {
 		return errors.New("'groupName' field must not be empty")
 	}
@@ -166,6 +160,32 @@ func validateJoinCmd(cmd ServerCommand) error {
 	}
 	if join.PartitionCount <= 0 {
 		return errors.New("'partitionCount' field must >= 1")
+	}
+
+	if len(groupSecrets) > 0 {
+		secret, ok := groupSecrets[join.GroupName]
+		if !ok {
+			return errors.New("group secret not existed")
+		}
+		if join.Secret != secret.Write {
+			return errors.New("invalid 'secret' for write permission")
+		}
+	}
+	return nil
+}
+
+func validateJoinCmd(cmd ServerCommand, groupSecrets map[string]GroupSecret) error {
+	if cmd.Type != ServerCommandTypeJoin {
+		return errors.New("invalid cmd type, must be 'join'")
+	}
+	if cmd.Join == nil {
+		return errors.New("'join' field must not be empty")
+	}
+
+	join := cmd.Join
+	err := validateJoinCmdBasicParams(join, groupSecrets)
+	if err != nil {
+		return err
 	}
 
 	if join.PrevState != nil {
@@ -203,7 +223,7 @@ func (h *WebsocketHandler) handShake(conn *websocket.Conn) (sessionData, bool) {
 		return sessionData{}, false
 	}
 
-	err = validateJoinCmd(cmd)
+	err = validateJoinCmd(cmd, h.options.groupSecrets)
 	if err != nil {
 		logger.Error("Validate Join Command", zap.Error(err))
 		return sessionData{}, false
@@ -340,8 +360,9 @@ func (h *WebsocketHandler) readonlyFunc(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if len(req.GroupName) == 0 {
-		logger.Error("groupName must not be empty", zap.Error(err))
+	err = validateReadonlyCommand(req, h.options.groupSecrets)
+	if err != nil {
+		logger.Error("Validate Readonly Failed", zap.Error(err))
 		return
 	}
 
@@ -359,4 +380,20 @@ func errorIsCloseNormal(err error) bool {
 		return false
 	}
 	return closeErr.Code == websocket.CloseNormalClosure
+}
+
+func validateReadonlyCommand(req ServerWatchRequest, secrets map[string]GroupSecret) error {
+	if len(req.GroupName) == 0 {
+		return errors.New("groupName must not be empty")
+	}
+	if len(secrets) > 0 {
+		secret, ok := secrets[req.GroupName]
+		if !ok {
+			return errors.New("group secret not existed")
+		}
+		if req.Secret != secret.Read {
+			return errors.New("invalid 'secret' for read permission")
+		}
+	}
+	return nil
 }

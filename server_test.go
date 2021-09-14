@@ -8,9 +8,10 @@ import (
 
 func TestValidateJoinCmd(t *testing.T) {
 	table := []struct {
-		name string
-		cmd  ServerCommand
-		err  error
+		name    string
+		cmd     ServerCommand
+		secrets map[string]GroupSecret
+		err     error
 	}{
 		{
 			name: "wrong-type",
@@ -182,10 +183,46 @@ func TestValidateJoinCmd(t *testing.T) {
 			},
 			err: errors.New("previous state partitions 'modVersion' field is too big"),
 		},
+		{
+			name: "invalid-join-secret",
+			cmd: ServerCommand{
+				Type: ServerCommandTypeJoin,
+				Join: &ServerJoinCommand{
+					GroupName:      "some-group",
+					NodeName:       "some-node",
+					Secret:         "123",
+					PartitionCount: 3,
+				},
+			},
+			secrets: map[string]GroupSecret{
+				"some-group": {
+					Write: "some-write-secret",
+				},
+			},
+			err: errors.New("invalid 'secret' for write permission"),
+		},
+		{
+			name: "missing-group-secrets",
+			cmd: ServerCommand{
+				Type: ServerCommandTypeJoin,
+				Join: &ServerJoinCommand{
+					GroupName:      "some-group",
+					NodeName:       "some-node",
+					Secret:         "123",
+					PartitionCount: 3,
+				},
+			},
+			secrets: map[string]GroupSecret{
+				"other-group": {
+					Write: "some-write-secret",
+				},
+			},
+			err: errors.New("group secret not existed"),
+		},
 	}
 	for _, e := range table {
 		t.Run(e.name, func(t *testing.T) {
-			err := validateJoinCmd(e.cmd)
+			err := validateJoinCmd(e.cmd, e.secrets)
 			assert.Equal(t, e.err, err)
 		})
 	}
@@ -270,6 +307,72 @@ func TestValidateNotifyCmd(t *testing.T) {
 	for _, e := range table {
 		t.Run(e.name, func(t *testing.T) {
 			err := validateNotifyCmd(e.cmd, e.count)
+			assert.Equal(t, e.err, err)
+		})
+	}
+}
+
+func TestValidateReadonlyCommand(t *testing.T) {
+	table := []struct {
+		name    string
+		req     ServerWatchRequest
+		secrets map[string]GroupSecret
+		err     error
+	}{
+		{
+			name: "group-empty",
+			err:  errors.New("groupName must not be empty"),
+		},
+		{
+			name: "missing-group-secret",
+			req: ServerWatchRequest{
+				GroupName: "group01",
+			},
+			secrets: map[string]GroupSecret{
+				"other": {
+					Read: "read-secret",
+				},
+			},
+			err: errors.New("group secret not existed"),
+		},
+		{
+			name: "invalid-secret",
+			req: ServerWatchRequest{
+				GroupName: "group01",
+				Secret:    "some-secret",
+			},
+			secrets: map[string]GroupSecret{
+				"group01": {
+					Read: "read-secret",
+				},
+			},
+			err: errors.New("invalid 'secret' for read permission"),
+		},
+		{
+			name: "ok-with-secret",
+			req: ServerWatchRequest{
+				GroupName: "group01",
+				Secret:    "read-secret",
+			},
+			secrets: map[string]GroupSecret{
+				"group01": {
+					Read: "read-secret",
+				},
+			},
+			err: nil,
+		},
+		{
+			name: "ok-without-secret",
+			req: ServerWatchRequest{
+				GroupName: "group01",
+				Secret:    "some-secret",
+			},
+			err: nil,
+		},
+	}
+	for _, e := range table {
+		t.Run(e.name, func(t *testing.T) {
+			err := validateReadonlyCommand(e.req, e.secrets)
 			assert.Equal(t, e.err, err)
 		})
 	}
